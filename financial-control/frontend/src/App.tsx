@@ -3,6 +3,7 @@ import { useAuthStore } from '@/store/auth.store'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { Toaster } from '@/components/ui/toaster'
 import AuthPage from '@/pages/AuthPage'
+import LandingPage from '@/pages/LandingPage'
 import DashboardPage from '@/pages/DashboardPage'
 import TransactionsPage from '@/pages/TransactionsPage'
 import CategoriesPage from '@/pages/CategoriesPage'
@@ -16,15 +17,24 @@ import ForecastPage from '@/pages/ForecastPage'
 import GoalsPage from '@/pages/GoalsPage'
 import SettingsPage from '@/pages/SettingsPage'
 
-function PrivateRoute({ children }: { children: React.ReactNode }) {
+/** Shows LandingPage to visitors; redirects authenticated users to dashboard. */
+function RootRoute() {
   const { token } = useAuthStore()
-  if (!token) return <Navigate to="/login" replace />
+  if (token) return <Navigate to="/dashboard" replace />
+  return <LandingPage />
+}
+
+/** Redirects authenticated users away from auth pages. */
+function PublicRoute({ children }: { children: React.ReactNode }) {
+  const { token } = useAuthStore()
+  if (token) return <Navigate to="/dashboard" replace />
   return <>{children}</>
 }
 
-function PublicRoute({ children }: { children: React.ReactNode }) {
+/** Redirects unauthenticated users to login. */
+function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuthStore()
-  if (token) return <Navigate to="/" replace />
+  if (!token) return <Navigate to="/login" replace />
   return <>{children}</>
 }
 
@@ -32,7 +42,13 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Public landing page */}
+        <Route path="/" element={<RootRoute />} />
+
+        {/* Auth */}
         <Route path="/login" element={<PublicRoute><AuthPage /></PublicRoute>} />
+
+        {/* Protected app routes */}
         <Route
           element={
             <PrivateRoute>
@@ -40,7 +56,7 @@ export default function App() {
             </PrivateRoute>
           }
         >
-          <Route path="/" element={<DashboardPage />} />
+          <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/transactions" element={<TransactionsPage />} />
           <Route path="/accounts" element={<AccountsPage />} />
           <Route path="/investments" element={<InvestmentsPage />} />
@@ -53,6 +69,8 @@ export default function App() {
           <Route path="/categories" element={<CategoriesPage />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
+
+        {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <Toaster />

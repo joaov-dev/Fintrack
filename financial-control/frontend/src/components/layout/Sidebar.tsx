@@ -12,7 +12,7 @@ const navGroups = [
   {
     label: 'Visão Geral',
     items: [
-      { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+      { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
       { to: '/financial-health', icon: HeartPulse, label: 'Saúde Financeira' },
       { to: '/reports', icon: FileBarChart, label: 'Relatórios' },
     ],
@@ -106,7 +106,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                   <NavLink
                     key={to}
                     to={to}
-                    end={to === '/'}
+                    end={to === '/dashboard'}
                     onClick={onClose}
                     className={({ isActive }) =>
                       cn(
