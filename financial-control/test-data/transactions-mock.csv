@@ -1,0 +1,128 @@
+data,descricao,valor,tipo,conta,categoria
+2025-06-01,Salário Junho,5200.00,INCOME,Conta Corrente,Salário
+2025-06-01,Academia Smartfit,90.00,EXPENSE,Conta Corrente,Saúde
+2025-06-03,Supermercado Extra,520.00,EXPENSE,Conta Corrente,Alimentação
+2025-06-05,Aluguel Junho,1500.00,EXPENSE,Conta Corrente,Moradia
+2025-06-08,Uber - corridas semana,45.00,EXPENSE,Conta Corrente,Transporte
+2025-06-10,Internet Vivo Fibra,120.00,EXPENSE,Conta Corrente,Assinaturas
+2025-06-12,Sushi Leblon - jantar,180.00,EXPENSE,Cartão de Crédito,Restaurante
+2025-06-14,Farmácia Drogasil,65.00,EXPENSE,Conta Corrente,Saúde
+2025-06-15,Spotify + Netflix,55.00,EXPENSE,Cartão de Crédito,Assinaturas
+2025-06-15,Plano Celular Claro,80.00,EXPENSE,Conta Corrente,Assinaturas
+2025-06-18,Supermercado Pão de Açúcar,310.00,EXPENSE,Cartão de Crédito,Alimentação
+2025-06-20,Gasolina Ipiranga,200.00,EXPENSE,Conta Corrente,Transporte
+2025-06-22,Cinema Village,60.00,EXPENSE,Cartão de Crédito,Lazer
+2025-06-25,Freelance - Site Institucional,1200.00,INCOME,Conta Corrente,Freelance
+2025-06-28,Roupas Renner,350.00,EXPENSE,Cartão de Crédito,Vestuário
+2025-07-01,Salário Julho,5200.00,INCOME,Conta Corrente,Salário
+2025-07-01,Academia Smartfit,90.00,EXPENSE,Conta Corrente,Saúde
+2025-07-03,Supermercado Extra,490.00,EXPENSE,Conta Corrente,Alimentação
+2025-07-05,Aluguel Julho,1500.00,EXPENSE,Conta Corrente,Moradia
+2025-07-07,Uber - corridas semana,38.00,EXPENSE,Conta Corrente,Transporte
+2025-07-10,Internet Vivo Fibra,120.00,EXPENSE,Conta Corrente,Assinaturas
+2025-07-12,Fogo de Chão - almoço,230.00,EXPENSE,Cartão de Crédito,Restaurante
+2025-07-15,Plano Celular Claro,80.00,EXPENSE,Conta Corrente,Assinaturas
+2025-07-15,Spotify + Netflix,55.00,EXPENSE,Cartão de Crédito,Assinaturas
+2025-07-16,Supermercado Carrefour,420.00,EXPENSE,Cartão de Crédito,Alimentação
+2025-07-18,Consulta Médica Particular,250.00,EXPENSE,Conta Corrente,Saúde
+2025-07-20,Gasolina Posto BR,180.00,EXPENSE,Conta Corrente,Transporte
+2025-07-22,Show Teatro - ingresso,150.00,EXPENSE,Cartão de Crédito,Lazer
+2025-07-28,Conta de Luz CEMIG,145.00,EXPENSE,Conta Corrente,Moradia
+2025-08-01,Salário Agosto,5200.00,INCOME,Conta Corrente,Salário
+2025-08-01,Academia Smartfit,90.00,EXPENSE,Conta Corrente,Saúde
+2025-08-04,Supermercado Extra,560.00,EXPENSE,Conta Corrente,Alimentação
+2025-08-05,Aluguel Agosto,1500.00,EXPENSE,Conta Corrente,Moradia
+2025-08-07,Uber - corridas semana,52.00,EXPENSE,Conta Corrente,Transporte
+2025-08-10,Internet Vivo Fibra,120.00,EXPENSE,Conta Corrente,Assinaturas
+2025-08-12,Farmácia Drogasil,90.00,EXPENSE,Conta Corrente,Saúde
+2025-08-14,Restaurante Japonês,160.00,EXPENSE,Cartão de Crédito,Restaurante
+2025-08-15,Plano Celular Claro,80.00,EXPENSE,Conta Corrente,Assinaturas
+2025-08-15,Spotify + Netflix,55.00,EXPENSE,Cartão de Crédito,Assinaturas
+2025-08-17,Supermercado Carrefour,380.00,EXPENSE,Cartão de Crédito,Alimentação
+2025-08-20,Gasolina Ipiranga,210.00,EXPENSE,Conta Corrente,Transporte
+2025-08-25,Freelance - App Mobile,2500.00,INCOME,Conta Corrente,Freelance
+2025-08-27,Roupas Shopping Iguatemi,280.00,EXPENSE,Cartão de Crédito,Vestuário
+2025-08-29,Livraria Cultura - livros,120.00,EXPENSE,Cartão de Crédito,Educação
+2025-09-01,Salário Setembro,5200.00,INCOME,Conta Corrente,Salário
+2025-09-01,Academia Smartfit,90.00,EXPENSE,Conta Corrente,Saúde
+2025-09-03,Supermercado Extra,430.00,EXPENSE,Conta Corrente,Alimentação
+2025-09-05,Aluguel Setembro,1500.00,EXPENSE,Conta Corrente,Moradia
+2025-09-08,Uber - corridas semana,67.00,EXPENSE,Conta Corrente,Transporte
+2025-09-10,Internet Vivo Fibra,120.00,EXPENSE,Conta Corrente,Assinaturas
+2025-09-13,Restaurante Italiano,140.00,EXPENSE,Cartão de Crédito,Restaurante
+2025-09-15,Plano Celular Claro,80.00,EXPENSE,Conta Corrente,Assinaturas
+2025-09-15,Spotify + Netflix,55.00,EXPENSE,Cartão de Crédito,Assinaturas
+2025-09-17,Supermercado Pão de Açúcar,390.00,EXPENSE,Cartão de Crédito,Alimentação
+2025-09-19,Conta de Luz CEMIG,160.00,EXPENSE,Conta Corrente,Moradia
+2025-09-20,Gasolina Posto BR,195.00,EXPENSE,Conta Corrente,Transporte
+2025-09-22,Cinema - final de semana,50.00,EXPENSE,Cartão de Crédito,Lazer
+2025-09-25,Curso Online Udemy,299.00,EXPENSE,Cartão de Crédito,Educação
+2025-10-01,Salário Outubro,5200.00,INCOME,Conta Corrente,Salário
+2025-10-01,Academia Smartfit,90.00,EXPENSE,Conta Corrente,Saúde
+2025-10-03,Supermercado Extra,510.00,EXPENSE,Conta Corrente,Alimentação
+2025-10-05,Aluguel Outubro,1500.00,EXPENSE,Conta Corrente,Moradia
+2025-10-07,Uber - corridas semana,43.00,EXPENSE,Conta Corrente,Transporte
+2025-10-10,Internet Vivo Fibra,120.00,EXPENSE,Conta Corrente,Assinaturas
+2025-10-13,Aniversário - Restaurante,320.00,EXPENSE,Cartão de Crédito,Restaurante
+2025-10-14,Farmácia Drogasil,75.00,EXPENSE,Conta Corrente,Saúde
+2025-10-15,Plano Celular Claro,80.00,EXPENSE,Conta Corrente,Assinaturas
+2025-10-15,Spotify + Netflix,55.00,EXPENSE,Cartão de Crédito,Assinaturas
+2025-10-18,Supermercado Carrefour,445.00,EXPENSE,Cartão de Crédito,Alimentação
+2025-10-20,Gasolina Ipiranga,220.00,EXPENSE,Conta Corrente,Transporte
+2025-10-22,Show de Música - ingresso,200.00,EXPENSE,Cartão de Crédito,Lazer
+2025-10-28,Freelance - Landing Page,800.00,INCOME,Conta Corrente,Freelance
+2025-11-01,Salário Novembro,5200.00,INCOME,Conta Corrente,Salário
+2025-11-01,Academia Smartfit,90.00,EXPENSE,Conta Corrente,Saúde
+2025-11-03,Supermercado Extra,580.00,EXPENSE,Conta Corrente,Alimentação
+2025-11-05,Aluguel Novembro,1500.00,EXPENSE,Conta Corrente,Moradia
+2025-11-07,Uber - corridas semana,55.00,EXPENSE,Conta Corrente,Transporte
+2025-11-10,Internet Vivo Fibra,120.00,EXPENSE,Conta Corrente,Assinaturas
+2025-11-12,Restaurante - almoço,120.00,EXPENSE,Cartão de Crédito,Restaurante
+2025-11-15,Plano Celular Claro,80.00,EXPENSE,Conta Corrente,Assinaturas
+2025-11-15,Spotify + Netflix,55.00,EXPENSE,Cartão de Crédito,Assinaturas
+2025-11-18,Supermercado Pão de Açúcar,350.00,EXPENSE,Cartão de Crédito,Alimentação
+2025-11-20,Gasolina Posto BR,190.00,EXPENSE,Conta Corrente,Transporte
+2025-11-25,Black Friday - Eletrônicos,899.00,EXPENSE,Cartão de Crédito,Lazer
+2025-11-25,Black Friday - Roupas,450.00,EXPENSE,Cartão de Crédito,Vestuário
+2025-11-28,Conta de Luz CEMIG,175.00,EXPENSE,Conta Corrente,Moradia
+2025-12-01,Salário Dezembro + 13o Salário,10400.00,INCOME,Conta Corrente,Salário
+2025-12-01,Academia Smartfit,90.00,EXPENSE,Conta Corrente,Saúde
+2025-12-03,Supermercado Extra,650.00,EXPENSE,Conta Corrente,Alimentação
+2025-12-05,Aluguel Dezembro,1500.00,EXPENSE,Conta Corrente,Moradia
+2025-12-08,Uber - corridas semana,70.00,EXPENSE,Conta Corrente,Transporte
+2025-12-10,Internet Vivo Fibra,120.00,EXPENSE,Conta Corrente,Assinaturas
+2025-12-12,Confraternização empresa,280.00,EXPENSE,Cartão de Crédito,Restaurante
+2025-12-15,Plano Celular Claro,80.00,EXPENSE,Conta Corrente,Assinaturas
+2025-12-15,Spotify + Netflix,55.00,EXPENSE,Cartão de Crédito,Assinaturas
+2025-12-16,Presentes de Natal,850.00,EXPENSE,Cartão de Crédito,Lazer
+2025-12-18,Supermercado - Ceia de Natal,480.00,EXPENSE,Cartão de Crédito,Alimentação
+2025-12-20,Gasolina Ipiranga,230.00,EXPENSE,Conta Corrente,Transporte
+2025-12-22,Passagens - Viagem Natal,680.00,EXPENSE,Cartão de Crédito,Lazer
+2025-12-28,Farmácia Drogasil,45.00,EXPENSE,Conta Corrente,Saúde
+2026-01-02,Salário Janeiro,5200.00,INCOME,Conta Corrente,Salário
+2026-01-02,Academia Smartfit,90.00,EXPENSE,Conta Corrente,Saúde
+2026-01-05,Aluguel Janeiro,1500.00,EXPENSE,Conta Corrente,Moradia
+2026-01-06,Supermercado Extra,490.00,EXPENSE,Conta Corrente,Alimentação
+2026-01-08,Uber - corridas semana,60.00,EXPENSE,Conta Corrente,Transporte
+2026-01-10,Internet Vivo Fibra,120.00,EXPENSE,Conta Corrente,Assinaturas
+2026-01-13,Restaurante - jantar,170.00,EXPENSE,Cartão de Crédito,Restaurante
+2026-01-15,Plano Celular Claro,80.00,EXPENSE,Conta Corrente,Assinaturas
+2026-01-15,Spotify + Netflix,55.00,EXPENSE,Cartão de Crédito,Assinaturas
+2026-01-18,Supermercado Carrefour,360.00,EXPENSE,Cartão de Crédito,Alimentação
+2026-01-20,Gasolina Posto BR,215.00,EXPENSE,Conta Corrente,Transporte
+2026-01-22,Matrícula Escola / Cursos,1200.00,EXPENSE,Conta Corrente,Educação
+2026-01-25,Freelance - Dashboard Analytics,1800.00,INCOME,Conta Corrente,Freelance
+2026-01-28,Conta de Luz CEMIG,165.00,EXPENSE,Conta Corrente,Moradia
+2026-02-03,Salário Fevereiro,5200.00,INCOME,Conta Corrente,Salário
+2026-02-03,Academia Smartfit,90.00,EXPENSE,Conta Corrente,Saúde
+2026-02-05,Aluguel Fevereiro,1500.00,EXPENSE,Conta Corrente,Moradia
+2026-02-06,Supermercado Extra,470.00,EXPENSE,Conta Corrente,Alimentação
+2026-02-08,Uber - corridas semana,48.00,EXPENSE,Conta Corrente,Transporte
+2026-02-10,Internet Vivo Fibra,120.00,EXPENSE,Conta Corrente,Assinaturas
+2026-02-12,Carnaval - saídas e eventos,380.00,EXPENSE,Cartão de Crédito,Lazer
+2026-02-14,Restaurante Dia dos Namorados,220.00,EXPENSE,Cartão de Crédito,Restaurante
+2026-02-15,Plano Celular Claro,80.00,EXPENSE,Conta Corrente,Assinaturas
+2026-02-15,Spotify + Netflix,55.00,EXPENSE,Cartão de Crédito,Assinaturas
+2026-02-17,Supermercado Pão de Açúcar,390.00,EXPENSE,Cartão de Crédito,Alimentação
+2026-02-18,Farmácia Drogasil,80.00,EXPENSE,Conta Corrente,Saúde
+2026-02-20,Gasolina Ipiranga,200.00,EXPENSE,Conta Corrente,Transporte
