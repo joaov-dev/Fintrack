@@ -329,7 +329,7 @@ export function ImportModal({ open, onClose, onSuccess }: ImportModalProps) {
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-slate-500 text-xs uppercase">
                   <tr>
-                    <th className="px-4 py-2.5 text-left font-medium">Campo Fintrack</th>
+                    <th className="px-4 py-2.5 text-left font-medium">Campo DominaHub</th>
                     <th className="px-4 py-2.5 text-left font-medium">Coluna no CSV</th>
                     <th className="px-4 py-2.5 text-left font-medium">Exemplo</th>
                   </tr>

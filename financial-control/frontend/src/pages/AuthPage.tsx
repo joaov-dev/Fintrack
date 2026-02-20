@@ -41,7 +41,7 @@ export default function AuthPage() {
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary mb-4 shadow-lg shadow-violet-200">
             <TrendingUp className="w-7 h-7 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-slate-900">Fintrack</h1>
+          <h1 className="text-2xl font-bold text-slate-900">DominaHub</h1>
           <p className="text-slate-500 text-sm mt-1">Controle suas finanças com clareza</p>
         </div>
 

@@ -20,7 +20,7 @@ export function AppLayout() {
           >
             <Menu className="w-5 h-5" />
           </button>
-          <span className="font-semibold text-slate-900">Fintrack</span>
+          <span className="font-semibold text-slate-900">DominaHub</span>
           <ThemeToggle className="ml-auto" />
         </header>
 

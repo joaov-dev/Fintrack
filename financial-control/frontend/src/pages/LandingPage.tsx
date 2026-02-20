@@ -45,7 +45,7 @@ function Navbar() {
   const links = [
     { label: 'Funcionalidades', href: '#features' },
     { label: 'Como funciona', href: '#how-it-works' },
-    { label: 'Por que Domina', href: '#why' },
+    { label: 'Por que DominaHub', href: '#why' },
   ]
 
   return (
@@ -61,7 +61,7 @@ function Navbar() {
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
             <TrendingUp className="w-4 h-4 text-primary-foreground" />
           </div>
-          <span className="font-black text-lg tracking-tight text-foreground">Domina</span>
+          <span className="font-black text-lg tracking-tight text-foreground">DominaHub</span>
         </Link>
 
         {/* Desktop nav */}
@@ -143,7 +143,7 @@ function DashboardMockup() {
           <div className="w-2.5 h-2.5 rounded-full bg-rose-500/70" />
           <div className="w-2.5 h-2.5 rounded-full bg-amber-400/70" />
           <div className="w-2.5 h-2.5 rounded-full bg-primary/70" />
-          <span className="ml-auto text-[10px] text-muted-foreground font-medium">Domina — Dashboard</span>
+          <span className="ml-auto text-[10px] text-muted-foreground font-medium">DominaHub — Dashboard</span>
         </div>
 
         {/* Summary cards */}
@@ -581,7 +581,7 @@ function ProductPreviewSection() {
           <span className="text-sm font-semibold uppercase tracking-widest" style={{ color: 'hsl(var(--primary))' }}>
             Visual do produto
           </span>
-          <h2 className="text-3xl sm:text-4xl font-black text-foreground mt-3">Veja o Domina em ação</h2>
+          <h2 className="text-3xl sm:text-4xl font-black text-foreground mt-3">Veja o DominaHub em ação</h2>
         </div>
 
         {/* Tab selector */}
@@ -648,11 +648,11 @@ function WhySection() {
         {/* Header */}
         <div className={cn('text-center mb-14 transition-all duration-700', inView ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8')}>
           <span className="text-sm font-semibold uppercase tracking-widest" style={{ color: 'hsl(var(--primary))' }}>
-            Por que Domina
+            Por que DominaHub
           </span>
           <h2 className="text-3xl sm:text-4xl font-black text-foreground mt-3">Diferente dos apps genéricos</h2>
           <p className="text-muted-foreground mt-4 max-w-lg mx-auto text-lg">
-            Enquanto outros apps registram o passado, o Domina projeta o futuro.
+            Enquanto outros apps registram o passado, o DominaHub projeta o futuro.
           </p>
         </div>
 
@@ -752,7 +752,7 @@ function Footer() {
           <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center">
             <TrendingUp className="w-3.5 h-3.5 text-primary-foreground" />
           </div>
-          <span className="font-black text-foreground">Domina</span>
+          <span className="font-black text-foreground">DominaHub</span>
         </div>
 
         <div className="flex items-center gap-6 text-sm text-muted-foreground">
@@ -762,7 +762,7 @@ function Footer() {
         </div>
 
         <p className="text-xs text-muted-foreground">
-          © {new Date().getFullYear()} Domina Finance Hub
+          © {new Date().getFullYear()} DominaHub
         </p>
       </div>
     </footer>

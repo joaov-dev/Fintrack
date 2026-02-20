@@ -1,8 +1,9 @@
+import { useState, useEffect } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   TrendingUp, LayoutDashboard, ArrowLeftRight, Tag, Landmark,
   LogOut, X, BarChart3, Repeat2, FileBarChart, AlertCircle, HeartPulse,
-  CalendarClock, Target, Settings,
+  CalendarClock, Target, Settings, ChevronDown,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth.store'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
@@ -56,6 +57,25 @@ interface SidebarProps {
 export function Sidebar({ open, onClose }: SidebarProps) {
   const { user, logout } = useAuthStore()
   const navigate = useNavigate()
+  const [isDesktop, setIsDesktop] = useState(false)
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)')
+    setIsDesktop(mq.matches)
+    const handler = (e: MediaQueryListEvent) => setIsDesktop(e.matches)
+    mq.addEventListener('change', handler)
+    return () => mq.removeEventListener('change', handler)
+  }, [])
+
+  const toggleGroup = (label: string) => {
+    if (!isDesktop) return
+    setCollapsed(prev => {
+      const next = new Set(prev)
+      next.has(label) ? next.delete(label) : next.add(label)
+      return next
+    })
+  }
 
   const handleLogout = () => {
     logout()
@@ -85,7 +105,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shadow-sm dark:shadow-primary/20">
             <TrendingUp className="w-4 h-4 text-white dark:text-primary-foreground" />
           </div>
-          <span className="font-bold text-slate-900 text-lg">Fintrack</span>
+          <span className="font-bold text-slate-900 text-lg">DominaHub</span>
           <div className="ml-auto flex items-center gap-1">
             <ThemeToggle />
             <button onClick={onClose} className="lg:hidden text-slate-400 hover:text-slate-600">
@@ -96,34 +116,60 @@ export function Sidebar({ open, onClose }: SidebarProps) {
 
         {/* Nav */}
         <nav className="flex-1 px-3 py-3 overflow-y-auto space-y-4">
-          {navGroups.map((group) => (
-            <div key={group.label}>
-              <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-                {group.label}
-              </p>
-              <div className="space-y-0.5">
-                {group.items.map(({ to, icon: Icon, label }) => (
-                  <NavLink
-                    key={to}
-                    to={to}
-                    end={to === '/dashboard'}
-                    onClick={onClose}
-                    className={({ isActive }) =>
-                      cn(
-                        'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
-                        isActive
-                          ? 'bg-primary/10 text-primary'
-                          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
-                      )
-                    }
+          {navGroups.map((group) => {
+              const isCollapsed = isDesktop && collapsed.has(group.label)
+              return (
+                <div key={group.label}>
+                  <button
+                    onClick={() => toggleGroup(group.label)}
+                    className={cn(
+                      'flex items-center w-full px-3 mb-1 gap-1',
+                      isDesktop ? 'cursor-pointer group' : 'cursor-default',
+                    )}
                   >
-                    <Icon className="w-4 h-4" />
-                    {label}
-                  </NavLink>
-                ))}
-              </div>
-            </div>
-          ))}
+                    <span className="flex-1 text-left text-[10px] font-semibold uppercase tracking-wider text-slate-400 group-hover:text-slate-500 transition-colors">
+                      {group.label}
+                    </span>
+                    {isDesktop && (
+                      <ChevronDown
+                        className={cn(
+                          'w-3 h-3 text-slate-400 transition-transform duration-200',
+                          isCollapsed && 'rotate-180',
+                        )}
+                      />
+                    )}
+                  </button>
+                  <div
+                    className={cn(
+                      'grid transition-all duration-300 ease-in-out',
+                      isCollapsed ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]',
+                    )}
+                  >
+                    <div className="overflow-hidden space-y-0.5">
+                      {group.items.map(({ to, icon: Icon, label }) => (
+                        <NavLink
+                          key={to}
+                          to={to}
+                          end={to === '/dashboard'}
+                          onClick={onClose}
+                          className={({ isActive }) =>
+                            cn(
+                              'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
+                              isActive
+                                ? 'bg-primary/10 text-primary'
+                                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
+                            )
+                          }
+                        >
+                          <Icon className="w-4 h-4" />
+                          {label}
+                        </NavLink>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
         </nav>
 
         {/* User + Logout */}
