@@ -8,12 +8,30 @@ export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-screen overflow-hidden">
+      {/* ── Ambient glass orbs — provide depth for backdrop-filter to blur ── */}
+      <div className="fixed inset-0 pointer-events-none z-[1]">
+        <div
+          className="absolute -top-40 -right-20 w-[680px] h-[680px] rounded-full blur-[110px]"
+          style={{ background: 'hsl(var(--primary) / 0.07)' }}
+        />
+        <div
+          className="absolute -bottom-40 -left-20 w-[580px] h-[580px] rounded-full blur-[100px]"
+          style={{ background: 'hsl(var(--warning) / 0.06)' }}
+        />
+        <div
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[420px] h-[420px] rounded-full blur-[90px]"
+          style={{ background: 'hsl(var(--primary) / 0.03)' }}
+        />
+      </div>
+
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Mobile header */}
-        <header className="lg:hidden flex items-center gap-3 px-4 h-14 border-b border-slate-200 bg-white">
+      <div className="relative z-[2] flex-1 flex flex-col overflow-hidden">
+        {/* Mobile header — glass */}
+        <header className="lg:hidden flex items-center gap-3 px-4 h-14 border-b
+          bg-white/80 dark:bg-[#0F0F14]/75 backdrop-blur-xl
+          border-black/[0.08] dark:border-white/[0.08]">
           <button
             onClick={() => setSidebarOpen(true)}
             className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100"

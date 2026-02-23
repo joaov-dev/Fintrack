@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   TrendingUp, LayoutDashboard, ArrowLeftRight, Tag, Landmark,
   LogOut, X, BarChart3, Repeat2, FileBarChart, AlertCircle, HeartPulse,
-  CalendarClock, Target, Settings, ChevronDown,
+  CalendarClock, Target, Settings, ChevronDown, CreditCard,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth.store'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
@@ -31,6 +31,7 @@ const navGroups = [
       { to: '/transactions', icon: ArrowLeftRight, label: 'Transações' },
       { to: '/recurring', icon: Repeat2, label: 'Recorrências' },
       { to: '/accounts', icon: Landmark, label: 'Contas' },
+      { to: '/credit-cards', icon: CreditCard, label: 'Cartões' },
     ],
   },
   {
@@ -95,13 +96,16 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       {/* Sidebar */}
       <aside
         className={cn(
-          'fixed left-0 top-0 z-30 h-full w-64 bg-white border-r border-slate-200 flex flex-col transition-transform duration-300 ease-in-out',
+          'fixed left-0 top-0 z-30 h-full w-64 flex flex-col transition-transform duration-300 ease-in-out',
+          'bg-white/90 dark:bg-[#0F0F14]/80 backdrop-blur-2xl',
+          'border-r border-black/[0.08] dark:border-white/[0.08]',
+          'shadow-[4px_0_32px_rgba(0,0,0,0.15)] dark:shadow-[4px_0_32px_rgba(0,0,0,0.4)]',
           'lg:translate-x-0 lg:static lg:z-auto',
           open ? 'translate-x-0' : '-translate-x-full',
         )}
       >
         {/* Logo */}
-        <div className="flex items-center gap-3 px-6 h-16 border-b border-slate-100">
+        <div className="flex items-center gap-3 px-6 h-16 border-b border-black/[0.07] dark:border-white/[0.07]">
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shadow-sm dark:shadow-primary/20">
             <TrendingUp className="w-4 h-4 text-white dark:text-primary-foreground" />
           </div>
@@ -173,7 +177,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
         </nav>
 
         {/* User + Logout */}
-        <div className="px-3 py-4 border-t border-slate-100">
+        <div className="px-3 py-4 border-t border-black/[0.07] dark:border-white/[0.07]">
           <div className="flex items-center gap-3 px-3 py-2 mb-1">
             <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center overflow-hidden shrink-0">
               {user?.avatar ? (

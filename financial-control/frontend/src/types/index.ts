@@ -1,5 +1,7 @@
 export type CategoryType = 'INCOME' | 'EXPENSE'
 export type TransactionType = 'INCOME' | 'EXPENSE'
+export type PaymentMethod = 'CASH' | 'DEBIT' | 'PIX' | 'CREDIT_CARD' | 'TRANSFER'
+export type CardStatementStatus = 'OPEN' | 'CLOSED' | 'PAID' | 'OVERDUE'
 export type AccountType = 'CHECKING' | 'SAVINGS' | 'CREDIT' | 'INVESTMENT' | 'CASH'
 export type RecurrenceType = 'WEEKLY' | 'MONTHLY' | 'YEARLY'
 export type InvestmentPositionType = 'STOCK' | 'FUND' | 'FIXED_INCOME' | 'REAL_ESTATE' | 'CRYPTO' | 'OTHER'
@@ -62,6 +64,12 @@ export interface Transaction {
   parentId?: string | null
   transferId?: string | null
   positionId?: string | null
+  paymentMethod?: PaymentMethod | null
+  creditCardId?: string | null
+  statementId?: string | null
+  isCardPayment?: boolean
+  installmentPlanId?: string | null
+  installmentNumber?: number | null
   createdAt: string
   category: Category
   account: Account | null
@@ -122,6 +130,51 @@ export interface MonthlyData {
   expense: number
 }
 
+export interface CreditCard {
+  id: string
+  userId: string
+  name: string
+  brand: string | null
+  creditLimit: number
+  statementClosingDay: number
+  dueDay: number
+  color: string
+  isArchived: boolean
+  openBalance: number
+  availableLimit: number
+  utilizationPercent: number
+  nextDueDate: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CardStatement {
+  id: string
+  cardId: string
+  userId: string
+  periodStart: string
+  periodEnd: string
+  closingDate: string
+  dueDate: string
+  status: CardStatementStatus
+  totalSpent: number
+  totalPaid: number
+  openBalance: number
+  createdAt: string
+}
+
+export interface CardStatementDetail extends CardStatement {
+  transactions: Transaction[]
+  payments: Transaction[]
+}
+
+export interface CreditCardSummary {
+  totalOpenBalance: number
+  totalCreditLimit: number
+  totalAvailableLimit: number
+  nextDueStatement: { cardName: string; dueDate: string; openBalance: number } | null
+}
+
 export interface DashboardData {
   summary: DashboardSummary
   byCategory: CategoryExpense[]
@@ -132,6 +185,7 @@ export interface DashboardData {
   totalLiabilities: number
   netWorth: number
   budgets: Budget[]
+  creditCards: CreditCardSummary | null
 }
 
 export interface NetWorthSnapshot {

@@ -70,11 +70,11 @@ export async function generateInsights(
   // Start of 4 complete months ago (to capture 4 full prior months)
   const fourMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 4, 1)
 
-  const [recentTxs, liquidAccounts, liabilities, budgets, futureRecurring, spendingByCategory, netWorthHistory] =
+  const [recentTxs, liquidAccounts, liabilities, budgets, futureRecurring, spendingByCategory, netWorthHistory, creditCards, ccStatements] =
     await Promise.all([
-      // All non-transfer transactions for the last 4 months (insights 1, 2, 4, 5)
+      // All non-transfer, non-card-payment transactions for the last 4 months (insights 1, 2, 4, 5)
       prisma.transaction.findMany({
-        where: { userId, date: { gte: fourMonthsAgo }, transferId: null },
+        where: { userId, date: { gte: fourMonthsAgo }, transferId: null, isCardPayment: { not: true } },
         select: { type: true, amount: true, date: true, isRecurring: true },
       }),
       // Liquid accounts for emergency reserve (insight 4) and projection (alert 3)
@@ -98,6 +98,7 @@ export async function generateInsights(
           userId,
           isRecurring: true,
           transferId: null,
+          isCardPayment: { not: true },
           date: { gt: today, lte: endOfCurrentMonth },
         },
         select: { type: true, amount: true },
@@ -109,17 +110,33 @@ export async function generateInsights(
           userId,
           type: 'EXPENSE',
           transferId: null,
+          isCardPayment: { not: true },
           date: { gte: startOfCurrentMonth, lte: endOfCurrentMonth },
         },
         _sum: { amount: true },
       }),
       // Net worth history — 7 points → gives "6 months ago" baseline (insight 3)
       getNetWorthHistory(userId, prisma, 7),
+      // Credit cards for utilization insight
+      prisma.creditCard.findMany({
+        where: { userId, isArchived: false },
+        include: {
+          statements: {
+            where: { status: { in: ['OPEN', 'CLOSED', 'OVERDUE'] } },
+            select: { totalSpent: true, totalPaid: true },
+          },
+        },
+      }),
+      // CC open balances for credit dependency (insight 5)
+      prisma.cardStatement.findMany({
+        where: { userId, status: { in: ['OPEN', 'CLOSED', 'OVERDUE'] } },
+        select: { totalSpent: true, totalPaid: true },
+      }),
     ])
 
   // ── Shared pre-computation ─────────────────────────────────────────────────
 
-  const byMonth = groupByMonth(recentTxs, currentMonthKey)
+  const byMonth = groupByMonth(recentTxs.map((t) => ({ ...t, amount: Number(t.amount) })), currentMonthKey)
   const sortedMonths = Object.entries(byMonth).sort(([a], [b]) => a.localeCompare(b))
   const last4Months = sortedMonths.slice(-4)
   const last3Months = last4Months.slice(-3)
@@ -137,7 +154,12 @@ export async function generateInsights(
     return sum + Math.max(0, bal)
   }, 0)
 
-  const totalLiabilities = liabilities.reduce((s, l) => s + Number(l.currentBalance), 0)
+  const totalCCOpenBalance = ccStatements.reduce(
+    (s, stmt) => s + Math.max(0, Number(stmt.totalSpent) - Number(stmt.totalPaid)),
+    0,
+  )
+  const totalLiabilities =
+    liabilities.reduce((s, l) => s + Number(l.currentBalance), 0) + totalCCOpenBalance
 
   const insights: Insight[] = []
 
@@ -226,6 +248,27 @@ export async function generateInsights(
             : `Suas dívidas equivalem a ${(creditRatio * 6).toFixed(1)} meses da sua renda.`,
         suggestedAction: 'Considere reduzir o uso de crédito ou renegociar passivos.',
         dataContext: { creditRatio: Math.round(creditRatio * 1000) / 1000, totalLiabilities },
+      })
+    }
+  }
+
+  // ── Insight 6 — High credit card utilization ──────────────────────────────
+  for (const card of creditCards) {
+    const openBalance = card.statements.reduce(
+      (s, stmt) => s + Math.max(0, Number(stmt.totalSpent) - Number(stmt.totalPaid)),
+      0,
+    )
+    const creditLimit = Number(card.creditLimit)
+    const utilizationPercent = creditLimit > 0 ? openBalance / creditLimit : 0
+
+    if (utilizationPercent >= 0.80) {
+      insights.push({
+        id: `high-cc-utilization-${card.id}`,
+        severity: utilizationPercent >= 0.90 ? 'CRITICAL' : 'WARNING',
+        title: `Alta utilização do cartão ${card.name}`,
+        message: `O cartão ${card.name} está com ${(utilizationPercent * 100).toFixed(0)}% do limite utilizado.`,
+        suggestedAction: 'Reduza os gastos no cartão ou pague a fatura para liberar limite.',
+        dataContext: { cardName: card.name, utilizationPercent: Math.round(utilizationPercent * 1000) / 1000, openBalance, creditLimit },
       })
     }
   }

@@ -16,6 +16,8 @@ import FinancialHealthPage from '@/pages/FinancialHealthPage'
 import ForecastPage from '@/pages/ForecastPage'
 import GoalsPage from '@/pages/GoalsPage'
 import SettingsPage from '@/pages/SettingsPage'
+import CreditCardsPage from '@/pages/CreditCardsPage'
+import CreditCardDetailPage from '@/pages/CreditCardDetailPage'
 
 /** Shows LandingPage to visitors; redirects authenticated users to dashboard. */
 function RootRoute() {
@@ -68,6 +70,8 @@ export default function App() {
           <Route path="/goals" element={<GoalsPage />} />
           <Route path="/categories" element={<CategoriesPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/credit-cards" element={<CreditCardsPage />} />
+          <Route path="/credit-cards/:id" element={<CreditCardDetailPage />} />
         </Route>
 
         {/* Fallback */}

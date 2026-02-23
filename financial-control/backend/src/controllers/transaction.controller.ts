@@ -2,6 +2,8 @@ import { Response } from 'express'
 import { z } from 'zod'
 import { AuthRequest } from '../middlewares/auth.middleware'
 import { prisma } from '../services/prisma'
+import { getOrCreateStatement, recalculateStatement } from '../services/cardStatementService'
+import { getInstallmentDate } from '../services/billingCycleUtils'
 
 const transactionSchema = z.object({
   categoryId: z.string().cuid(),
@@ -14,6 +16,10 @@ const transactionSchema = z.object({
   isRecurring: z.boolean().optional().default(false),
   recurrenceType: z.enum(['WEEKLY', 'MONTHLY', 'YEARLY']).optional().nullable(),
   recurrenceEnd: z.string().datetime().optional().nullable(),
+  // Credit card fields
+  paymentMethod: z.enum(['CASH', 'DEBIT', 'PIX', 'CREDIT_CARD', 'TRANSFER']).optional().nullable(),
+  creditCardId: z.string().cuid().optional().nullable(),
+  installments: z.number().int().min(1).max(48).optional().default(1),
 })
 
 /** Auto-generates recurring transaction instances for a given month if they don't exist yet */
@@ -87,7 +93,11 @@ async function generateRecurringForMonth(userId: string, month: number, year: nu
 }
 
 export async function listTransactions(req: AuthRequest, res: Response) {
-  const { month, year, type, categoryId, accountId, search, isRecurring, startDate, endDate } = req.query
+  const {
+    month, year, type, categoryId, accountId, search, isRecurring, startDate, endDate,
+    creditCardId, statementId, paymentMethod,
+    includeCardPayments,
+  } = req.query
 
   if (month && year && !isRecurring) {
     await generateRecurringForMonth(req.userId!, Number(month), Number(year))
@@ -110,10 +120,15 @@ export async function listTransactions(req: AuthRequest, res: Response) {
   if (categoryId) where.categoryId = categoryId
   if (accountId) where.accountId = accountId
   if (search) where.description = { contains: String(search), mode: 'insensitive' }
+  if (creditCardId) where.creditCardId = creditCardId
+  if (statementId) where.statementId = statementId
+  if (paymentMethod) where.paymentMethod = paymentMethod
+  // By default, hide card payment transactions (they are liability reductions, not expenses)
+  if (includeCardPayments !== 'true') where.isCardPayment = { not: true }
 
   const transactions = await prisma.transaction.findMany({
     where,
-    include: { category: true, account: true },
+    include: { category: true, account: true, statement: true },
     orderBy: { date: 'desc' },
   })
 
@@ -122,12 +137,13 @@ export async function listTransactions(req: AuthRequest, res: Response) {
 
 export async function createTransaction(req: AuthRequest, res: Response) {
   const data = transactionSchema.parse(req.body)
+  const userId = req.userId!
 
-  const category = await prisma.category.findFirst({ where: { id: data.categoryId, userId: req.userId } })
+  const category = await prisma.category.findFirst({ where: { id: data.categoryId, userId } })
   if (!category) return res.status(400).json({ error: 'Categoria inválida' })
 
   if (data.accountId) {
-    const account = await prisma.account.findFirst({ where: { id: data.accountId, userId: req.userId } })
+    const account = await prisma.account.findFirst({ where: { id: data.accountId, userId } })
     if (!account) return res.status(400).json({ error: 'Conta inválida' })
   }
 
@@ -135,10 +151,92 @@ export async function createTransaction(req: AuthRequest, res: Response) {
     return res.status(400).json({ error: 'Informe o tipo de recorrência' })
   }
 
+  // ── Credit card purchase ────────────────────────────────────────────────
+  if (data.paymentMethod === 'CREDIT_CARD') {
+    if (!data.creditCardId) {
+      return res.status(400).json({ error: 'Informe o cartão de crédito' })
+    }
+    const card = await prisma.creditCard.findFirst({ where: { id: data.creditCardId, userId } })
+    if (!card) return res.status(400).json({ error: 'Cartão de crédito inválido' })
+
+    const txDate = new Date(data.date)
+    const installments = data.installments ?? 1
+
+    if (installments > 1) {
+      // ── Parcelamento ────────────────────────────────────────────────────
+      const installmentAmount = parseFloat((data.amount / installments).toFixed(2))
+      const remainder = parseFloat((data.amount - installmentAmount * installments).toFixed(2))
+
+      const plan = await prisma.installmentPlan.create({
+        data: {
+          userId,
+          creditCardId: data.creditCardId,
+          description: data.description,
+          totalAmount: data.amount,
+          totalInstallments: installments,
+          installmentAmount,
+          startDate: txDate,
+        },
+      })
+
+      const createdTxs = []
+      for (let i = 1; i <= installments; i++) {
+        const instDate = getInstallmentDate(txDate, i)
+        const statementId = await getOrCreateStatement(data.creditCardId, userId, instDate, prisma)
+        const amount = i === 1 ? installmentAmount + remainder : installmentAmount
+
+        const tx = await prisma.transaction.create({
+          data: {
+            userId,
+            categoryId: data.categoryId,
+            type: 'EXPENSE',
+            amount,
+            description: `${data.description} (${i}/${installments})`,
+            date: instDate,
+            notes: data.notes ?? null,
+            paymentMethod: 'CREDIT_CARD',
+            creditCardId: data.creditCardId,
+            statementId,
+            installmentPlanId: plan.id,
+            installmentNumber: i,
+          },
+          include: { category: true, account: true, statement: true },
+        })
+        createdTxs.push(tx)
+        await recalculateStatement(statementId, prisma)
+      }
+
+      return res.status(201).json(createdTxs[0])
+    } else {
+      // ── Compra à vista no cartão ────────────────────────────────────────
+      const statementId = await getOrCreateStatement(data.creditCardId, userId, txDate, prisma)
+      const transaction = await prisma.transaction.create({
+        data: {
+          userId,
+          categoryId: data.categoryId,
+          type: 'EXPENSE',
+          amount: data.amount,
+          description: data.description,
+          date: txDate,
+          notes: data.notes ?? null,
+          paymentMethod: 'CREDIT_CARD',
+          creditCardId: data.creditCardId,
+          statementId,
+        },
+        include: { category: true, account: true, statement: true },
+      })
+      await recalculateStatement(statementId, prisma)
+      return res.status(201).json(transaction)
+    }
+  }
+
+  // ── Regular transaction ────────────────────────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { installments: _installments, ...restData } = data
   const transaction = await prisma.transaction.create({
     data: {
-      ...data,
-      userId: req.userId!,
+      ...restData,
+      userId,
       date: new Date(data.date),
       recurrenceEnd: data.recurrenceEnd ? new Date(data.recurrenceEnd) : null,
     },
@@ -159,15 +257,23 @@ export async function updateTransaction(req: AuthRequest, res: Response) {
     if (!category) return res.status(400).json({ error: 'Categoria inválida' })
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { installments: _installments2, ...updateData } = data
   const updated = await prisma.transaction.update({
     where: { id },
     data: {
-      ...data,
+      ...updateData,
       date: data.date ? new Date(data.date) : undefined,
       recurrenceEnd: data.recurrenceEnd ? new Date(data.recurrenceEnd) : null,
     },
-    include: { category: true, account: true },
+    include: { category: true, account: true, statement: true },
   })
+
+  // Recalculate affected statement if amount changed
+  if (transaction.statementId && (data.amount !== undefined || data.date !== undefined)) {
+    await recalculateStatement(transaction.statementId, prisma)
+  }
+
   return res.json(updated)
 }
 
@@ -182,5 +288,11 @@ export async function deleteTransaction(req: AuthRequest, res: Response) {
   }
 
   await prisma.transaction.delete({ where: { id } })
+
+  // Recalculate statement if this was a CC transaction
+  if (transaction.statementId) {
+    await recalculateStatement(transaction.statementId, prisma)
+  }
+
   return res.status(204).send()
 }

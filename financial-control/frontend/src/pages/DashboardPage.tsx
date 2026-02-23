@@ -9,6 +9,7 @@ import { MonthlyChart } from '@/components/dashboard/MonthlyChart'
 import { RecentTransactions } from '@/components/dashboard/RecentTransactions'
 import { AccountsWidget } from '@/components/dashboard/AccountsWidget'
 import { BudgetProgress } from '@/components/dashboard/BudgetProgress'
+import { CreditCardsWidget } from '@/components/dashboard/CreditCardsWidget'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { monthLabel, formatCurrency } from '@/lib/utils'
@@ -120,6 +121,11 @@ export default function DashboardPage() {
             <AccountsWidget accounts={data.accounts} totalBalance={data.totalBalance} />
             <BudgetProgress budgets={data.budgets} />
           </div>
+
+          {/* Credit cards widget — only when card data is present */}
+          {data.creditCards && (
+            <CreditCardsWidget data={data.creditCards} />
+          )}
 
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

@@ -13,6 +13,7 @@ import { liabilityRoutes } from './routes/liability.routes'
 import { analyticsRoutes } from './routes/analytics.routes'
 import { importRoutes } from './routes/import.routes'
 import { goalsRoutes } from './routes/goals.routes'
+import { creditCardRoutes } from './routes/credit-cards.routes'
 import { errorHandler } from './middlewares/error.middleware'
 
 const app = express()
@@ -33,6 +34,7 @@ app.use('/api/liabilities', liabilityRoutes)
 app.use('/api/analytics', analyticsRoutes)
 app.use('/api/import', importRoutes)
 app.use('/api/goals', goalsRoutes)
+app.use('/api/credit-cards', creditCardRoutes)
 
 app.use(errorHandler)
 

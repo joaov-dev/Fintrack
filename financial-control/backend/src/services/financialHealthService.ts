@@ -109,13 +109,14 @@ export async function getFinancialHealth(
   const now = new Date()
   const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1)
 
-  const [transactions, liquidAccounts, liabilities] = await Promise.all([
-    // Transactions for pillars 1 & 2 — exclude transfers
+  const [transactions, liquidAccounts, liabilities, ccStatements] = await Promise.all([
+    // Transactions for pillars 1 & 2 — exclude transfers and card bill payments
     prisma.transaction.findMany({
       where: {
         userId,
         date: { gte: threeMonthsAgo },
         transferId: null,
+        isCardPayment: { not: true },
       },
       select: { type: true, amount: true, isRecurring: true },
     }),
@@ -130,6 +131,11 @@ export async function getFinancialHealth(
     prisma.liability.findMany({
       where: { userId },
       select: { currentBalance: true },
+    }),
+    // CC open balances for pillar 3 (short-term liabilities)
+    prisma.cardStatement.findMany({
+      where: { userId, status: { in: ['OPEN', 'CLOSED', 'OVERDUE'] } },
+      select: { totalSpent: true, totalPaid: true },
     }),
   ])
 
@@ -158,10 +164,12 @@ export async function getFinancialHealth(
   const incomeCommitmentScore = scoreIncomeCommitment(incomeCommitmentValue)
 
   // ── Pillar 3: Dependência de Crédito ──────────────────────────────────────
-  const totalLiabilities = liabilities.reduce(
-    (s, l) => s + Number(l.currentBalance),
+  const totalCCOpenBalance = ccStatements.reduce(
+    (s, stmt) => s + Math.max(0, Number(stmt.totalSpent) - Number(stmt.totalPaid)),
     0,
   )
+  const totalLiabilities =
+    liabilities.reduce((s, l) => s + Number(l.currentBalance), 0) + totalCCOpenBalance
   const monthlyIncome = totalIncome3m / 3
   const creditDependencyValue =
     monthlyIncome > 0

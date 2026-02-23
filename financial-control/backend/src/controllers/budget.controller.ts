@@ -47,6 +47,7 @@ export async function listBudgets(req: AuthRequest, res: Response) {
           categoryId: budget.categoryId,
           type: 'EXPENSE',
           date: { gte: start, lte: end },
+          isCardPayment: { not: true },
         },
         _sum: { amount: true },
       })

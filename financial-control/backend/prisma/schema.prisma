@@ -23,6 +23,9 @@ model User {
   investmentPositions InvestmentPosition[]
   liabilities         Liability[]
   goals               Goal[]
+  creditCards         CreditCard[]
+  cardStatements      CardStatement[]
+  installmentPlans    InstallmentPlan[]
 
   @@map("users")
 }
@@ -81,53 +84,122 @@ model Budget {
 }
 
 model Transaction {
-  id             String          @id @default(cuid())
-  userId         String
-  categoryId     String
-  accountId      String?
-  type           TransactionType
-  amount         Decimal         @db.Decimal(12, 2)
-  description    String
-  date           DateTime
-  notes          String?
-  isRecurring    Boolean         @default(false)
-  recurrenceType RecurrenceType?
-  recurrenceEnd  DateTime?
-  parentId       String?
-  transferId     String?
-  positionId     String?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  id                String          @id @default(cuid())
+  userId            String
+  categoryId        String
+  accountId         String?
+  type              TransactionType
+  amount            Decimal         @db.Decimal(12, 2)
+  description       String
+  date              DateTime
+  notes             String?
+  isRecurring       Boolean         @default(false)
+  recurrenceType    RecurrenceType?
+  recurrenceEnd     DateTime?
+  parentId          String?
+  transferId        String?
+  positionId        String?
+  paymentMethod     PaymentMethod?
+  creditCardId      String?
+  statementId       String?
+  isCardPayment     Boolean         @default(false)
+  installmentPlanId String?
+  installmentNumber Int?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
-  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  category  Category            @relation(fields: [categoryId], references: [id])
-  account   Account?            @relation(fields: [accountId], references: [id])
-  parent    Transaction?        @relation("RecurringInstances", fields: [parentId], references: [id])
-  instances Transaction[]       @relation("RecurringInstances")
-  position  InvestmentPosition? @relation(fields: [positionId], references: [id])
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category    Category            @relation(fields: [categoryId], references: [id])
+  account     Account?            @relation(fields: [accountId], references: [id])
+  parent      Transaction?        @relation("RecurringInstances", fields: [parentId], references: [id])
+  instances   Transaction[]       @relation("RecurringInstances")
+  position    InvestmentPosition? @relation(fields: [positionId], references: [id])
+  creditCard  CreditCard?         @relation(fields: [creditCardId], references: [id])
+  statement   CardStatement?      @relation(fields: [statementId], references: [id])
+  installment InstallmentPlan?    @relation(fields: [installmentPlanId], references: [id])
 
   @@map("transactions")
 }
 
 model InvestmentPosition {
-  id           String                @id @default(cuid())
+  id           String                 @id @default(cuid())
   userId       String
   accountId    String
   name         String
   ticker       String?
   type         InvestmentPositionType
-  quantity     Decimal?              @db.Decimal(15, 6)
-  avgPrice     Decimal?              @db.Decimal(12, 2)
-  currentValue Decimal               @default(0) @db.Decimal(12, 2)
+  quantity     Decimal?               @db.Decimal(15, 6)
+  avgPrice     Decimal?               @db.Decimal(12, 2)
+  currentValue Decimal                @default(0) @db.Decimal(12, 2)
   notes        String?
-  createdAt    DateTime              @default(now())
-  updatedAt    DateTime              @updatedAt
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   account      Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
   transactions Transaction[]
 
   @@map("investment_positions")
+}
+
+model CreditCard {
+  id                  String   @id @default(cuid())
+  userId              String
+  name                String
+  brand               String?
+  creditLimit         Decimal  @db.Decimal(12, 2)
+  statementClosingDay Int
+  dueDay              Int
+  color               String   @default("#6366f1")
+  isArchived          Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  statements       CardStatement[]
+  transactions     Transaction[]
+  installmentPlans InstallmentPlan[]
+
+  @@map("credit_cards")
+}
+
+model CardStatement {
+  id          String              @id @default(cuid())
+  userId      String
+  cardId      String
+  periodStart DateTime
+  periodEnd   DateTime
+  closingDate DateTime
+  dueDate     DateTime
+  status      CardStatementStatus @default(OPEN)
+  totalSpent  Decimal             @default(0) @db.Decimal(12, 2)
+  totalPaid   Decimal             @default(0) @db.Decimal(12, 2)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  card         CreditCard    @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@map("card_statements")
+}
+
+model InstallmentPlan {
+  id                String   @id @default(cuid())
+  userId            String
+  creditCardId      String
+  description       String
+  totalAmount       Decimal  @db.Decimal(12, 2)
+  totalInstallments Int
+  installmentAmount Decimal  @db.Decimal(12, 2)
+  startDate         DateTime
+  createdAt         DateTime @default(now())
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  creditCard   CreditCard    @relation(fields: [creditCardId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@map("installment_plans")
 }
 
 enum AccountType {
@@ -152,6 +224,21 @@ enum RecurrenceType {
   WEEKLY
   MONTHLY
   YEARLY
+}
+
+enum PaymentMethod {
+  CASH
+  DEBIT
+  PIX
+  CREDIT_CARD
+  TRANSFER
+}
+
+enum CardStatementStatus {
+  OPEN
+  CLOSED
+  PAID
+  OVERDUE
 }
 
 enum InvestmentPositionType {

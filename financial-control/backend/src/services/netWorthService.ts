@@ -67,7 +67,7 @@ export async function getCurrentNetWorth(
   userId: string,
   prisma: PrismaClient,
 ): Promise<NetWorthSnapshot> {
-  const [accounts, liabilities] = await Promise.all([
+  const [accounts, liabilities, ccStatements] = await Promise.all([
     prisma.account.findMany({
       where: { userId },
       include: { transactions: { select: { type: true, amount: true } } },
@@ -75,6 +75,10 @@ export async function getCurrentNetWorth(
     prisma.liability.findMany({
       where: { userId },
       select: { type: true, currentBalance: true },
+    }),
+    prisma.cardStatement.findMany({
+      where: { userId, status: { in: ['OPEN', 'CLOSED', 'OVERDUE'] } },
+      select: { totalSpent: true, totalPaid: true },
     }),
   ])
 
@@ -97,6 +101,15 @@ export async function getCurrentNetWorth(
     byLiabilityType[l.type] = (byLiabilityType[l.type] ?? 0) + val
   }
 
+  const totalCCOpenBalance = ccStatements.reduce(
+    (s, stmt) => s + Math.max(0, toNumber(stmt.totalSpent) - toNumber(stmt.totalPaid)),
+    0,
+  )
+  if (totalCCOpenBalance > 0) {
+    totalLiabilities += totalCCOpenBalance
+    byLiabilityType['CREDIT_CARD'] = (byLiabilityType['CREDIT_CARD'] ?? 0) + totalCCOpenBalance
+  }
+
   return {
     totalAssets,
     totalLiabilities,
@@ -114,7 +127,7 @@ export async function getNetWorthHistory(
   const now = new Date()
 
   // Fetch all accounts with their full transaction history in a single query
-  const [accounts, liabilities] = await Promise.all([
+  const [accounts, liabilities, ccStatements] = await Promise.all([
     prisma.account.findMany({
       where: { userId },
       include: {
@@ -128,14 +141,20 @@ export async function getNetWorthHistory(
       where: { userId },
       select: { currentBalance: true },
     }),
+    prisma.cardStatement.findMany({
+      where: { userId, status: { in: ['OPEN', 'CLOSED', 'OVERDUE'] } },
+      select: { totalSpent: true, totalPaid: true },
+    }),
   ])
 
   // Current liabilities only — we don't store historical liability snapshots.
   // The flat current value is used as the baseline for the whole series.
-  const totalLiabilities = liabilities.reduce(
-    (s, l) => s + toNumber(l.currentBalance),
+  const totalCCOpenBalance = ccStatements.reduce(
+    (s, stmt) => s + Math.max(0, toNumber(stmt.totalSpent) - toNumber(stmt.totalPaid)),
     0,
   )
+  const totalLiabilities =
+    liabilities.reduce((s, l) => s + toNumber(l.currentBalance), 0) + totalCCOpenBalance
 
   const history: NetWorthPoint[] = []
 

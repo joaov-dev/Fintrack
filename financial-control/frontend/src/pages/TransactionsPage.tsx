@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import {
-  Plus, Search, ArrowUpRight, ArrowDownRight, ArrowLeftRight, Pencil, Trash2, Loader2, ChevronLeft, ChevronRight, Upload,
+  Plus, Search, ArrowUpRight, ArrowDownRight, ArrowLeftRight, Pencil, Trash2, Loader2, ChevronLeft, ChevronRight, Upload, CreditCard,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -182,10 +182,16 @@ export default function TransactionsPage() {
                   <div className={cn(
                     'w-9 h-9 rounded-lg flex items-center justify-center shrink-0',
                     t.transferId ? 'bg-violet-100'
+                      : t.isCardPayment ? 'bg-pink-100'
+                      : t.paymentMethod === 'CREDIT_CARD' ? 'bg-indigo-100'
                       : t.type === 'INCOME' ? 'bg-emerald-100' : 'bg-rose-100',
                   )}>
                     {t.transferId
                       ? <ArrowLeftRight className="w-4 h-4 text-violet-600" />
+                      : t.isCardPayment
+                      ? <CreditCard className="w-4 h-4 text-pink-600" />
+                      : t.paymentMethod === 'CREDIT_CARD'
+                      ? <CreditCard className="w-4 h-4 text-indigo-600" />
                       : t.type === 'INCOME'
                         ? <ArrowUpRight className="w-4 h-4 text-emerald-600" />
                         : <ArrowDownRight className="w-4 h-4 text-rose-600" />
@@ -194,13 +200,21 @@ export default function TransactionsPage() {
 
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-slate-900 truncate">{t.description}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
+                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                       {t.transferId ? (
                         <span className="text-xs text-violet-500 font-medium">Transferência</span>
+                      ) : t.isCardPayment ? (
+                        <span className="text-xs text-pink-500 font-medium">Pagamento de Fatura</span>
                       ) : (
                         <span className="inline-flex items-center gap-1 text-xs text-slate-400">
                           <span className="w-2 h-2 rounded-full" style={{ background: t.category.color }} />
                           {t.category.name}
+                        </span>
+                      )}
+                      {t.paymentMethod === 'CREDIT_CARD' && !t.isCardPayment && (
+                        <span className="text-xs bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded font-medium">
+                          Cartão
+                          {t.installmentNumber != null ? ` ${t.installmentNumber}×` : ''}
                         </span>
                       )}
                       <span className="text-xs text-slate-300">·</span>
@@ -212,6 +226,7 @@ export default function TransactionsPage() {
                     <span className={cn(
                       'text-sm font-semibold',
                       t.transferId ? 'text-violet-600'
+                        : t.isCardPayment ? 'text-pink-600'
                         : t.type === 'INCOME' ? 'text-emerald-600' : 'text-rose-600',
                     )}>
                       {t.transferId ? '' : t.type === 'INCOME' ? '+' : '-'} {formatCurrency(Number(t.amount))}

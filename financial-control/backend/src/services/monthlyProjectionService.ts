@@ -59,7 +59,7 @@ export async function getMonthlyProjection(
   const daysRemaining = totalDays - todayDay
   const daysPassedSafe = Math.max(todayDay, 1)
 
-  const [realizedTxs, futureRecurringTxs, allMonthTxs, liabilities] = await Promise.all([
+  const [realizedTxs, futureRecurringTxs, allMonthTxs, liabilities, ccDueStatements] = await Promise.all([
     // 1. Transactions realized up to today (excl. transfers)
     prisma.transaction.findMany({
       where: {
@@ -96,6 +96,20 @@ export async function getMonthlyProjection(
         currentBalance: { gt: 0 },
       },
       select: { name: true, currentBalance: true, dueDate: true },
+    }),
+    // 5. Credit card statements due this month with open balance
+    prisma.cardStatement.findMany({
+      where: {
+        userId,
+        dueDate: { gte: startOfMonth, lte: endOfMonth },
+        status: { in: ['OPEN', 'CLOSED', 'OVERDUE'] },
+      },
+      select: {
+        dueDate: true,
+        totalSpent: true,
+        totalPaid: true,
+        card: { select: { name: true } },
+      },
     }),
   ])
 
@@ -151,6 +165,21 @@ export async function getMonthlyProjection(
       amount: Number(tx.amount),
       type: tx.type as 'INCOME' | 'EXPENSE',
       isLiability: false,
+    })
+  }
+
+  // Add credit card due-date events
+  for (const stmt of ccDueStatements) {
+    const openBalance = Math.max(0, Number(stmt.totalSpent) - Number(stmt.totalPaid))
+    if (openBalance <= 0) continue
+    const d = new Date(stmt.dueDate)
+    const dayNum = d.getDate()
+    if (!txsByDay.has(dayNum)) txsByDay.set(dayNum, [])
+    txsByDay.get(dayNum)!.push({
+      label: `Vencimento Fatura ${stmt.card.name}`,
+      amount: openBalance,
+      type: 'EXPENSE',
+      isLiability: true,
     })
   }
 
