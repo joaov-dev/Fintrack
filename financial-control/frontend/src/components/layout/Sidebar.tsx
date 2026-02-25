@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   TrendingUp, LayoutDashboard, ArrowLeftRight, Tag, Landmark,
   LogOut, X, BarChart3, Repeat2, FileBarChart, AlertCircle, HeartPulse,
-  CalendarClock, Target, Settings, ChevronDown, CreditCard,
+  CalendarClock, Target, Settings, ChevronDown, CreditCard, Lightbulb, Wand2,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth.store'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
@@ -14,6 +14,7 @@ const navGroups = [
     label: 'Visão Geral',
     items: [
       { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+      { to: '/insights', icon: Lightbulb, label: 'Insights' },
       { to: '/financial-health', icon: HeartPulse, label: 'Saúde Financeira' },
       { to: '/reports', icon: FileBarChart, label: 'Relatórios' },
     ],
@@ -21,7 +22,7 @@ const navGroups = [
   {
     label: 'Planejamento',
     items: [
-      { to: '/forecast', icon: CalendarClock, label: 'Previsão' },
+      { to: '/forecast', icon: CalendarClock, label: 'Fluxo Mensal' },
       { to: '/goals',    icon: Target,        label: 'Metas' },
     ],
   },
@@ -44,7 +45,8 @@ const navGroups = [
   {
     label: 'Configurações',
     items: [
-      { to: '/categories', icon: Tag, label: 'Categorias' },
+      { to: '/categories', icon: Tag,      label: 'Categorias' },
+      { to: '/rules',      icon: Wand2,    label: 'Regras Auto' },
       { to: '/settings',   icon: Settings, label: 'Minha Conta' },
     ],
   },

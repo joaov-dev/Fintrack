@@ -17,6 +17,11 @@ export interface CalendarDay {
   netFlow: number   // sum of income - expense for this day
 }
 
+export interface ProjectionItem {
+  label: string
+  amount: number
+}
+
 export interface MonthlyProjection {
   expectedBalance: number
   projectedIncome: number
@@ -26,6 +31,17 @@ export interface MonthlyProjection {
   dailyVariableAvg: number
   daysRemaining: number
   calendarDays: CalendarDay[]
+  // Breakdown for info modals
+  incomeBreakdown: {
+    realizedItems: ProjectionItem[]
+    recurringItems: ProjectionItem[]
+  }
+  expenseBreakdown: {
+    fixedRealizedItems: ProjectionItem[]
+    recurringItems: ProjectionItem[]
+    liabilityItems: ProjectionItem[]
+    ccItems: ProjectionItem[]
+  }
 }
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
@@ -59,7 +75,7 @@ export async function getMonthlyProjection(
   const daysRemaining = totalDays - todayDay
   const daysPassedSafe = Math.max(todayDay, 1)
 
-  const [realizedTxs, futureRecurringTxs, allMonthTxs, liabilities, ccDueStatements] = await Promise.all([
+  const [realizedTxs, futureRecurringTxs, allMonthTxs, allActiveLiabilities, ccDueStatements] = await Promise.all([
     // 1. Transactions realized up to today (excl. transfers)
     prisma.transaction.findMany({
       where: {
@@ -88,14 +104,13 @@ export async function getMonthlyProjection(
       },
       select: { type: true, amount: true, description: true, date: true, isRecurring: true, parentId: true },
     }),
-    // 4. Liabilities with dueDate in this month
+    // 4. ALL active liabilities (to compute monthly installments)
     prisma.liability.findMany({
       where: {
         userId,
-        dueDate: { gte: startOfMonth, lte: endOfMonth },
         currentBalance: { gt: 0 },
       },
-      select: { name: true, currentBalance: true, dueDate: true },
+      select: { name: true, currentBalance: true, installments: true, dueDate: true },
     }),
     // 5. Credit card statements due this month with open balance
     prisma.cardStatement.findMany({
@@ -118,18 +133,24 @@ export async function getMonthlyProjection(
   let fixedExpenseRealized = 0
   let variableExpenseRealized = 0
 
+  const realizedIncomeItems: ProjectionItem[] = []
+  const fixedRealizedItems: ProjectionItem[] = []
+
   for (const tx of realizedTxs) {
     const amount = Number(tx.amount)
     if (tx.type === 'INCOME') {
       realizedIncome += amount
+      realizedIncomeItems.push({ label: tx.description, amount })
     } else {
       const isFixed = tx.isRecurring || tx.parentId !== null
-      if (isFixed) fixedExpenseRealized += amount
-      else variableExpenseRealized += amount
+      if (isFixed) {
+        fixedExpenseRealized += amount
+        fixedRealizedItems.push({ label: tx.description, amount })
+      } else {
+        variableExpenseRealized += amount
+      }
     }
   }
-
-  const realizedExpense = fixedExpenseRealized + variableExpenseRealized
 
   // ── Future recurring ───────────────────────────────────────────────────────
   const futureRecurringIncome = futureRecurringTxs
@@ -140,20 +161,69 @@ export async function getMonthlyProjection(
     .filter((t) => t.type === 'EXPENSE')
     .reduce((s, t) => s + Number(t.amount), 0)
 
-  // ── Variable projection ────────────────────────────────────────────────────
+  // ── Variable (informational only — not included in projectedExpense) ────────
   const dailyVariableAvg = variableExpenseRealized / daysPassedSafe
   const projectedVariableFromRemaining = dailyVariableAvg * daysRemaining
 
-  // ── Final projection ───────────────────────────────────────────────────────
-  const projectedIncome = realizedIncome + futureRecurringIncome
-  const projectedExpense = realizedExpense + futureRecurringExpense + projectedVariableFromRemaining
-  const expectedBalance = projectedIncome - projectedExpense
+  // ── Liability installments ────────────────────────────────────────────────
+  const liabilityItems: ProjectionItem[] = allActiveLiabilities
+    .map((l) => {
+      if (l.installments && l.installments > 0) {
+        // Has installments → monthly cost = currentBalance / installments
+        return { label: l.name, amount: Number(l.currentBalance) / l.installments }
+      }
+      // No installments but due this month → full current balance
+      if (l.dueDate) {
+        const d = new Date(l.dueDate)
+        if (d.getFullYear() === year && d.getMonth() === month) {
+          return { label: l.name, amount: Number(l.currentBalance) }
+        }
+      }
+      return null
+    })
+    .filter((item): item is ProjectionItem => item !== null)
 
+  const liabilityInstallmentsTotal = liabilityItems.reduce((s, i) => s + i.amount, 0)
+
+  // ── Credit card open statements ───────────────────────────────────────────
+  const ccItems: ProjectionItem[] = ccDueStatements
+    .map((stmt) => ({
+      label: `Fatura ${stmt.card.name}`,
+      amount: Math.max(0, Number(stmt.totalSpent) - Number(stmt.totalPaid)),
+    }))
+    .filter((item) => item.amount > 0)
+
+  const ccOpenBalancesTotal = ccItems.reduce((s, i) => s + i.amount, 0)
+
+  // ── Final projection ───────────────────────────────────────────────────────
   const fixedExpenses = fixedExpenseRealized + futureRecurringExpense
   const variableExpenses = variableExpenseRealized + projectedVariableFromRemaining
 
+  const projectedIncome = realizedIncome + futureRecurringIncome
+
+  // projectedExpense = committed expenses only (recurring + liability installments + CC statements)
+  const projectedExpense = fixedExpenses + liabilityInstallmentsTotal + ccOpenBalancesTotal
+
+  const expectedBalance = projectedIncome - projectedExpense
+
+  // ── Breakdown details for info modals ─────────────────────────────────────
+  const incomeBreakdown = {
+    realizedItems: realizedIncomeItems,
+    recurringItems: futureRecurringTxs
+      .filter((t) => t.type === 'INCOME')
+      .map((t) => ({ label: t.description, amount: Number(t.amount) })),
+  }
+
+  const expenseBreakdown = {
+    fixedRealizedItems,
+    recurringItems: futureRecurringTxs
+      .filter((t) => t.type === 'EXPENSE')
+      .map((t) => ({ label: t.description, amount: Number(t.amount) })),
+    liabilityItems,
+    ccItems,
+  }
+
   // ── Build calendar ─────────────────────────────────────────────────────────
-  // Group all-month transactions by day (1-indexed)
   const txsByDay = new Map<number, CalendarDayEvent[]>()
 
   for (const tx of allMonthTxs) {
@@ -168,7 +238,7 @@ export async function getMonthlyProjection(
     })
   }
 
-  // Add credit card due-date events
+  // Add credit card due-date events to calendar
   for (const stmt of ccDueStatements) {
     const openBalance = Math.max(0, Number(stmt.totalSpent) - Number(stmt.totalPaid))
     if (openBalance <= 0) continue
@@ -183,10 +253,11 @@ export async function getMonthlyProjection(
     })
   }
 
-  // Add liability events
-  for (const liability of liabilities) {
+  // Add liability events (only those due this month) to calendar
+  for (const liability of allActiveLiabilities) {
     if (!liability.dueDate) continue
     const d = new Date(liability.dueDate)
+    if (d.getFullYear() !== year || d.getMonth() !== month) continue
     const dayNum = d.getDate()
     if (!txsByDay.has(dayNum)) txsByDay.set(dayNum, [])
     txsByDay.get(dayNum)!.push({
@@ -225,5 +296,7 @@ export async function getMonthlyProjection(
     dailyVariableAvg,
     daysRemaining,
     calendarDays,
+    incomeBreakdown,
+    expenseBreakdown,
   }
 }

@@ -6,6 +6,7 @@ export type AccountType = 'CHECKING' | 'SAVINGS' | 'CREDIT' | 'INVESTMENT' | 'CA
 export type RecurrenceType = 'WEEKLY' | 'MONTHLY' | 'YEARLY'
 export type InvestmentPositionType = 'STOCK' | 'FUND' | 'FIXED_INCOME' | 'REAL_ESTATE' | 'CRYPTO' | 'OTHER'
 export type LiabilityType = 'LOAN' | 'FINANCING' | 'CREDIT_CARD' | 'OTHER'
+export type DiscountType = 'PERCENTAGE' | 'FIXED'
 
 export interface User {
   id: string
@@ -13,6 +14,31 @@ export interface User {
   email: string
   avatar?: string | null
   createdAt: string
+  mfaEnabled?: boolean
+  // Financial preferences
+  currency?: string
+  locale?: string
+  timezone?: string
+  dateFormat?: string
+  closingDay?: number
+  // Notification preferences
+  notifBudget?: boolean
+  notifGoals?: boolean
+  notifDue?: boolean
+  notifInsights?: boolean
+  emailBudget?: boolean
+  emailGoals?: boolean
+  emailDue?: boolean
+  emailInsights?: boolean
+}
+
+export interface Session {
+  id: string
+  deviceName: string | null
+  ipAddress: string | null
+  createdAt: string
+  lastUsedAt: string
+  isCurrent: boolean
 }
 
 export interface Account {
@@ -34,6 +60,7 @@ export interface Category {
   color: string
   icon: string
   isDefault: boolean
+  parentId?: string | null
   createdAt: string
 }
 
@@ -46,6 +73,38 @@ export interface Budget {
   spent: number
   remaining: number
   percentage: number
+}
+
+export interface Tag {
+  id: string
+  name: string
+}
+
+export interface TransactionAttachment {
+  id: string
+  transactionId: string
+  filename: string
+  mimeType: string
+  size: number
+  dataUrl?: string   // present only when fetched via GET .../attachments/:aid
+  createdAt: string
+}
+
+export interface CategorizationRule {
+  id: string
+  userId: string
+  name: string
+  pattern: string
+  matchType: 'CONTAINS' | 'STARTS_WITH' | 'EQUALS'
+  categoryId: string
+  accountId: string | null
+  isActive: boolean
+  priority: number
+  appliedCount: number
+  createdAt: string
+  updatedAt: string
+  category: Pick<Category, 'id' | 'name' | 'color' | 'type'>
+  account:  Pick<Account, 'id' | 'name'> | null
 }
 
 export interface Transaction {
@@ -70,9 +129,12 @@ export interface Transaction {
   isCardPayment?: boolean
   installmentPlanId?: string | null
   installmentNumber?: number | null
+  splitId?: string | null
   createdAt: string
   category: Category
   account: Account | null
+  tags: Tag[]
+  attachments: Pick<TransactionAttachment, 'id' | 'filename' | 'mimeType' | 'size'>[]
 }
 
 export interface InvestmentPosition {
@@ -110,6 +172,23 @@ export interface Liability {
   notes: string | null
   createdAt: string
   updatedAt: string
+}
+
+export interface LiabilityPayment {
+  id: string
+  liabilityId: string
+  installmentsPaid: number | null
+  grossAmount: number
+  discountType: DiscountType | null
+  discountValue: number | null
+  discountAmount: number
+  paidAmount: number
+  accountId: string | null
+  categoryId: string | null
+  transactionId: string | null
+  notes: string | null
+  paidAt: string
+  createdAt: string
 }
 
 export interface DashboardSummary {
@@ -251,11 +330,18 @@ export const LIABILITY_TYPE_COLORS: Record<LiabilityType, string> = {
 
 // ─── Financial Health ─────────────────────────────────────────────────────────
 
+/** 'up' always means the metric improved from the user's perspective */
+export type PillarTrend = 'up' | 'down' | 'stable' | 'unknown'
+
 export interface FinancialHealthPillar {
   /** Raw computed value (ratio or months) */
   value: number
   /** Discrete score: 0, 25, 50, 75, or 100 */
   score: number
+  /** Trend vs. the previous 3-month period */
+  trend: PillarTrend
+  /** Previous period value for delta display, null if no prior data */
+  previousValue: number | null
 }
 
 export interface FinancialHealthData {
@@ -277,13 +363,60 @@ export interface FinancialHealthData {
 
 export type InsightSeverity = 'CRITICAL' | 'WARNING' | 'INFO'
 
+export type InsightStatus = 'ACTIVE' | 'DISMISSED' | 'SNOOZED' | 'RESOLVED'
+
+export type InsightType =
+  | 'OUTLIER_SPEND'
+  | 'NEW_SUBSCRIPTION'
+  | 'CATEGORY_SPIKE'
+  | 'DUE_PAYMENT'
+  | 'BUDGET_AT_RISK'
+  | 'MICRO_GOAL_AT_RISK'
+  | 'MICRO_GOAL_BREACHED'
+  | 'NEGATIVE_CASHFLOW'
+  | 'HIGH_FIXED_COSTS'
+  | 'STAGNANT_NET_WORTH'
+  | 'LOW_EMERGENCY_RESERVE'
+  | 'HIGH_CREDIT_DEPENDENCY'
+  | 'HIGH_CC_UTILIZATION'
+
+export interface InsightCTA {
+  label: string
+  route: string
+  params?: Record<string, string>
+}
+
 export interface Insight {
   id: string
+  type: InsightType
   severity: InsightSeverity
+  status: InsightStatus
   title: string
   message: string
+  explanation?: string | null
   suggestedAction: string
+  cta?: InsightCTA | null
   dataContext?: Record<string, unknown>
+  snoozedUntil?: string | null
+  createdAt: string
+}
+
+export type MicroGoalStatus = 'ON_TRACK' | 'AT_RISK' | 'BREACHED' | 'COMPLETED'
+export type MicroGoalScopeType = 'CATEGORY' | 'TOTAL_SPEND'
+
+export interface MicroGoal {
+  id: string
+  userId: string
+  name: string
+  scopeType: MicroGoalScopeType
+  scopeRefId: string | null
+  limitAmount: number
+  startDate: string
+  endDate: string
+  status: MicroGoalStatus
+  currentAmount: number
+  expectedPace: number
+  createdAt: string
 }
 
 export interface InsightsAlerts {
@@ -294,6 +427,7 @@ export interface InsightsAlerts {
 
 export interface InsightsResponse {
   insights: Insight[]
+  microGoals: MicroGoal[]
   alerts: InsightsAlerts
   /** False when the user has no financial activity to evaluate */
   hasEnoughData: boolean
@@ -337,6 +471,11 @@ export interface CalendarDay {
   netFlow: number
 }
 
+export interface ProjectionItem {
+  label: string
+  amount: number
+}
+
 export interface MonthlyProjection {
   expectedBalance: number
   projectedIncome: number
@@ -346,6 +485,16 @@ export interface MonthlyProjection {
   dailyVariableAvg: number
   daysRemaining: number
   calendarDays: CalendarDay[]
+  incomeBreakdown: {
+    realizedItems: ProjectionItem[]
+    recurringItems: ProjectionItem[]
+  }
+  expenseBreakdown: {
+    fixedRealizedItems: ProjectionItem[]
+    recurringItems: ProjectionItem[]
+    liabilityItems: ProjectionItem[]
+    ccItems: ProjectionItem[]
+  }
 }
 
 // ─── Goals ────────────────────────────────────────────────────────────────────
@@ -396,4 +545,6 @@ export interface ImportPreviewRow {
   overrideType?: 'INCOME' | 'EXPENSE'
   overrideAccountId?: string
   overrideCategoryId?: string
+  /** True when a matching transaction already exists in the database */
+  isDuplicate?: boolean
 }

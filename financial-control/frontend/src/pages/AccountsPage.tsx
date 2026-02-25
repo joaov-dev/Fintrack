@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import {
   Plus, Pencil, Trash2, Loader2,
-  Landmark, PiggyBank, CreditCard, TrendingUp, Wallet,
+  Landmark, PiggyBank, CreditCard, TrendingUp, Wallet, ArrowLeftRight,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { AccountModal } from '@/components/accounts/AccountModal'
+import { AccountTransferModal } from '@/components/accounts/AccountTransferModal'
 import { useAccounts } from '@/hooks/useAccounts'
+import { useTransfers } from '@/hooks/useTransfers'
 import { useToast } from '@/hooks/use-toast'
 import { Account, ACCOUNT_TYPE_LABELS } from '@/types'
 import { formatCurrency } from '@/lib/utils'
@@ -21,8 +23,10 @@ const ACCOUNT_ICONS: Record<Account['type'], React.ElementType> = {
 }
 
 export default function AccountsPage() {
-  const { accounts, isLoading, create, update, remove } = useAccounts()
+  const { accounts, isLoading, create, update, remove, refetch } = useAccounts()
+  const { create: createTransfer } = useTransfers()
   const [modalOpen, setModalOpen] = useState(false)
+  const [transferModalOpen, setTransferModalOpen] = useState(false)
   const [editing, setEditing] = useState<Account | null>(null)
   const { toast } = useToast()
 
@@ -40,6 +44,12 @@ export default function AccountsPage() {
     } catch {
       toast({ title: 'Erro ao salvar conta', variant: 'destructive' })
     }
+  }
+
+  const handleTransfer = async (data: Parameters<typeof createTransfer>[0]) => {
+    await createTransfer(data)
+    await refetch()
+    toast({ title: 'Transferência realizada com sucesso' })
   }
 
   const handleDelete = async (acc: Account) => {
@@ -61,9 +71,15 @@ export default function AccountsPage() {
           <h1 className="text-2xl font-bold text-slate-900">Contas</h1>
           <p className="text-slate-500 text-sm mt-0.5">Gerencie suas carteiras e contas bancárias</p>
         </div>
-        <Button onClick={() => { setEditing(null); setModalOpen(true) }}>
-          <Plus className="w-4 h-4" /> Nova Conta
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setTransferModalOpen(true)} disabled={accounts.length < 2}>
+            <ArrowLeftRight className="w-4 h-4" />
+            Transferir
+          </Button>
+          <Button onClick={() => { setEditing(null); setModalOpen(true) }}>
+            <Plus className="w-4 h-4" /> Nova Conta
+          </Button>
+        </div>
       </div>
 
       {/* Patrimônio total */}
@@ -153,6 +169,13 @@ export default function AccountsPage() {
         onClose={() => { setModalOpen(false); setEditing(null) }}
         onSave={handleSave}
         account={editing}
+      />
+
+      <AccountTransferModal
+        open={transferModalOpen}
+        onClose={() => setTransferModalOpen(false)}
+        onTransfer={handleTransfer}
+        accounts={accounts}
       />
     </div>
   )

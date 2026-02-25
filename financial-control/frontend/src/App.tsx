@@ -1,4 +1,6 @@
+import { useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { Loader2 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth.store'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { Toaster } from '@/components/ui/toaster'
@@ -18,6 +20,8 @@ import GoalsPage from '@/pages/GoalsPage'
 import SettingsPage from '@/pages/SettingsPage'
 import CreditCardsPage from '@/pages/CreditCardsPage'
 import CreditCardDetailPage from '@/pages/CreditCardDetailPage'
+import InsightsPage from '@/pages/InsightsPage'
+import RulesPage from '@/pages/RulesPage'
 
 /** Shows LandingPage to visitors; redirects authenticated users to dashboard. */
 function RootRoute() {
@@ -41,6 +45,21 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  const { initialize, isInitialized } = useAuthStore()
+
+  useEffect(() => {
+    initialize()
+  }, [initialize])
+
+  // Show a full-page spinner while the silent refresh is in progress
+  if (!isInitialized) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
   return (
     <BrowserRouter>
       <Routes>
@@ -72,6 +91,8 @@ export default function App() {
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="/credit-cards" element={<CreditCardsPage />} />
           <Route path="/credit-cards/:id" element={<CreditCardDetailPage />} />
+          <Route path="/insights" element={<InsightsPage />} />
+          <Route path="/rules" element={<RulesPage />} />
         </Route>
 
         {/* Fallback */}

@@ -27,6 +27,7 @@ const defaultForm = {
   type: 'CHECKING' as Account['type'],
   color: '#6366f1',
   initialBalance: '0',
+  balance: '0',
 }
 
 export function AccountModal({ open, onClose, onSave, account }: AccountModalProps) {
@@ -39,7 +40,8 @@ export function AccountModal({ open, onClose, onSave, account }: AccountModalPro
         name: account.name,
         type: account.type,
         color: account.color,
-        initialBalance: String(account.initialBalance),
+        initialBalance: Number(account.initialBalance).toFixed(2),
+        balance: Number(account.balance).toFixed(2),
       })
     } else {
       setForm(defaultForm)
@@ -50,7 +52,18 @@ export function AccountModal({ open, onClose, onSave, account }: AccountModalPro
     e.preventDefault()
     setIsSaving(true)
     try {
-      await onSave({ ...form, initialBalance: parseFloat(form.initialBalance) || 0 })
+      if (account) {
+        // Editing: send desired balance so backend recalculates initialBalance
+        await onSave({
+          name: form.name,
+          type: form.type,
+          color: form.color,
+          balance: parseFloat(form.balance) || 0,
+        })
+      } else {
+        // Creating: send initialBalance as usual
+        await onSave({ name: form.name, type: form.type, color: form.color, initialBalance: parseFloat(form.initialBalance) || 0 })
+      }
       onClose()
     } finally {
       setIsSaving(false)
@@ -87,7 +100,21 @@ export function AccountModal({ open, onClose, onSave, account }: AccountModalPro
             </Select>
           </div>
 
-          {!account && (
+          {account ? (
+            <div className="space-y-1.5">
+              <Label>Saldo atual (R$)</Label>
+              <Input
+                type="number"
+                step="0.01"
+                placeholder="0,00"
+                value={form.balance}
+                onChange={(e) => setForm({ ...form, balance: e.target.value })}
+              />
+              <p className="text-xs text-muted-foreground">
+                Edite para corrigir o saldo atual. O histórico de transações é preservado.
+              </p>
+            </div>
+          ) : (
             <div className="space-y-1.5">
               <Label>Saldo inicial (R$)</Label>
               <Input

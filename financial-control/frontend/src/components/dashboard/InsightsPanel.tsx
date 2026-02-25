@@ -1,5 +1,7 @@
-import { AlertTriangle, AlertCircle, TrendingDown, Clock, PiggyBank, BarChart2 } from 'lucide-react'
-import { Insight, InsightsAlerts, InsightsResponse } from '@/types'
+import { Link } from 'react-router-dom'
+import { AlertTriangle, TrendingDown, Clock, BarChart2, ArrowRight } from 'lucide-react'
+import { InsightsAlerts, InsightsResponse } from '@/types'
+import { InsightCard } from '@/components/insights/InsightCard'
 import { cn } from '@/lib/utils'
 
 // ─── Alert chips ──────────────────────────────────────────────────────────────
@@ -8,21 +10,21 @@ const ALERT_CONFIG = {
   budget: {
     icon: AlertTriangle,
     label: 'Orçamento excedido',
-    className: 'bg-amber-50 border-amber-200 text-amber-700',
+    className: 'bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300',
   },
   overdue: {
     icon: Clock,
     label: (count: number) => `${count} passivo${count > 1 ? 's' : ''} vencido${count > 1 ? 's' : ''}`,
-    className: 'bg-rose-50 border-rose-200 text-rose-700',
+    className: 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300',
   },
   projection: {
     icon: TrendingDown,
     label: 'Saldo negativo previsto',
-    className: 'bg-rose-50 border-rose-200 text-rose-700',
+    className: 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300',
   },
 }
 
-function AlertChip({ type, count }: { type: keyof typeof ALERT_CONFIG; count?: number }) {
+export function AlertChip({ type, count }: { type: keyof typeof ALERT_CONFIG; count?: number }) {
   const cfg = ALERT_CONFIG[type]
   const Icon = cfg.icon
   const label = type === 'overdue' && count != null
@@ -37,76 +39,24 @@ function AlertChip({ type, count }: { type: keyof typeof ALERT_CONFIG; count?: n
   )
 }
 
-// ─── Individual insight card ───────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const INSIGHT_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
-  'negative-cashflow':      TrendingDown,
-  'high-fixed-costs':       AlertTriangle,
-  'stagnant-net-worth':     PiggyBank,
-  'low-emergency-reserve':  PiggyBank,
-  'high-credit-dependency': AlertCircle,
-}
-
-const SEVERITY_STYLE = {
-  CRITICAL: {
-    border: 'border-l-rose-500',
-    bg: 'bg-rose-50',
-    badge: 'bg-rose-100 text-rose-700',
-    icon: 'text-rose-500',
-    label: 'Crítico',
-  },
-  WARNING: {
-    border: 'border-l-amber-500',
-    bg: 'bg-amber-50',
-    badge: 'bg-amber-100 text-amber-700',
-    icon: 'text-amber-500',
-    label: 'Atenção',
-  },
-  INFO: {
-    border: 'border-l-blue-500',
-    bg: 'bg-blue-50',
-    badge: 'bg-blue-100 text-blue-700',
-    icon: 'text-blue-500',
-    label: 'Info',
-  },
-}
-
-function InsightCard({ insight }: { insight: Insight }) {
-  const style = SEVERITY_STYLE[insight.severity]
-  const Icon = INSIGHT_ICON[insight.id] ?? AlertCircle
-
-  return (
-    <div className={cn('flex gap-3 p-4 rounded-lg border-l-4', style.border, style.bg)}>
-      <Icon className={cn('w-4 h-4 mt-0.5 flex-shrink-0', style.icon)} />
-      <div className="flex-1 min-w-0 space-y-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          <p className="text-sm font-semibold text-slate-800">{insight.title}</p>
-          <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded', style.badge)}>
-            {style.label}
-          </span>
-        </div>
-        <p className="text-xs text-slate-600">{insight.message}</p>
-        <p className="text-xs text-slate-500 italic">→ {insight.suggestedAction}</p>
-      </div>
-    </div>
-  )
+export function hasActiveAlerts(alerts: InsightsAlerts): boolean {
+  return alerts.budgetExceeded || alerts.overdueLiabilities > 0 || alerts.negativeBalanceProjection
 }
 
 // ─── Panel ────────────────────────────────────────────────────────────────────
 
-function hasActiveAlerts(alerts: InsightsAlerts): boolean {
-  return alerts.budgetExceeded || alerts.overdueLiabilities > 0 || alerts.negativeBalanceProjection
-}
-
 interface InsightsPanelProps {
   data: InsightsResponse
+  onDismiss: (id: string) => Promise<void>
+  onSnooze: (id: string, days?: number) => Promise<void>
 }
 
-export function InsightsPanel({ data }: InsightsPanelProps) {
-  // No financial data yet — prompt the user to add their history
+export function InsightsPanel({ data, onDismiss, onSnooze }: InsightsPanelProps) {
   if (!data.hasEnoughData) {
     return (
-      <div className="flex items-start gap-3 px-4 py-3.5 rounded-lg border border-dashed border-slate-200 bg-slate-50 text-slate-500">
+      <div className="flex items-start gap-3 px-4 py-3.5 rounded-lg border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 text-slate-500">
         <BarChart2 className="w-4 h-4 mt-0.5 flex-shrink-0 text-slate-400" />
         <p className="text-sm">
           Adicione seu histórico de transações e saldo para gerar insights diários e atualizados.
@@ -115,14 +65,15 @@ export function InsightsPanel({ data }: InsightsPanelProps) {
     )
   }
 
-  const showAlerts   = hasActiveAlerts(data.alerts)
-  const showInsights = data.insights.length > 0
+  const showAlerts = hasActiveAlerts(data.alerts)
+  const top3 = data.insights.slice(0, 3)
+  const total = data.insights.length
 
-  if (!showAlerts && !showInsights) return null
+  if (!showAlerts && top3.length === 0) return null
 
   return (
     <div className="space-y-3">
-      {/* Compact alert chips row */}
+      {/* Alert chips */}
       {showAlerts && (
         <div className="flex flex-wrap gap-2">
           {data.alerts.budgetExceeded && <AlertChip type="budget" />}
@@ -133,17 +84,31 @@ export function InsightsPanel({ data }: InsightsPanelProps) {
         </div>
       )}
 
-      {/* Insight cards */}
-      {showInsights && (
-        <div className="space-y-2">
-          {data.insights.map((insight) => (
-            <InsightCard key={insight.id} insight={insight} />
+      {/* Top 3 insight cards */}
+      {top3.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-2">
+          {top3.map((insight, i) => (
+            <InsightCard
+              key={insight.id}
+              insight={insight}
+              onDismiss={onDismiss}
+              onSnooze={onSnooze}
+              style={{ animationDelay: `${i * 60}ms` }}
+            />
           ))}
         </div>
+      )}
+
+      {/* "Ver todos" link */}
+      {total > 0 && (
+        <Link
+          to="/insights"
+          className="flex items-center justify-end gap-1 text-xs font-medium text-primary hover:underline pt-0.5"
+        >
+          Ver todos os insights ({total})
+          <ArrowRight className="w-3.5 h-3.5" />
+        </Link>
       )}
     </div>
   )
 }
-
-// Named export so FinancialHealthPage can reuse the chip without coupling
-export { AlertChip, hasActiveAlerts }

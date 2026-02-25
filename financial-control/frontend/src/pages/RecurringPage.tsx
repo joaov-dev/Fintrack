@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import {
   Repeat2, ArrowUpRight, ArrowDownRight, Pencil, Trash2, Loader2, Plus, CalendarClock,
 } from 'lucide-react'
@@ -21,6 +21,8 @@ const FREQUENCY_COLORS: Record<string, string> = {
   YEARLY:  'bg-amber-100 text-amber-700',
 }
 
+type TypeFilter = 'ALL' | 'INCOME' | 'EXPENSE'
+
 export default function RecurringPage() {
   const navigate = useNavigate()
   const { toast } = useToast()
@@ -30,6 +32,32 @@ export default function RecurringPage() {
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Transaction | null>(null)
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL')
+  const [categoryFilter, setCategoryFilter] = useState<string | null>(null)
+
+  // Derive categories that have recurring transactions for the current type filter
+  const activeCategories = useMemo(() => {
+    const source = typeFilter === 'ALL' ? templates : templates.filter((t) => t.type === typeFilter)
+    const seen = new Map<string, { id: string; name: string; color: string }>()
+    for (const t of source) {
+      if (!seen.has(t.categoryId)) {
+        seen.set(t.categoryId, { id: t.categoryId, name: t.category.name, color: t.category.color })
+      }
+    }
+    return Array.from(seen.values())
+  }, [templates, typeFilter])
+
+  // Final filtered list
+  const displayed = useMemo(() => templates.filter((t) => {
+    if (typeFilter !== 'ALL' && t.type !== typeFilter) return false
+    if (categoryFilter && t.categoryId !== categoryFilter) return false
+    return true
+  }), [templates, typeFilter, categoryFilter])
+
+  const handleTypeFilter = (type: TypeFilter) => {
+    setTypeFilter(type)
+    setCategoryFilter(null) // reset category when switching type
+  }
 
   const handleEdit = (t: Transaction) => {
     setEditing(t)
@@ -57,14 +85,18 @@ export default function RecurringPage() {
     }
   }
 
+  const hasRecurring = templates.length > 0
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Recorrências</h1>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Recorrências</h1>
           <p className="text-slate-500 text-sm mt-0.5">
-            {isLoading ? '...' : `${templates.length} transaç${templates.length !== 1 ? 'ões' : 'ão'} recorrente${templates.length !== 1 ? 's' : ''} ativa${templates.length !== 1 ? 's' : ''}`}
+            {isLoading
+              ? '...'
+              : `${displayed.length} de ${templates.length} recorrência${templates.length !== 1 ? 's' : ''}`}
           </p>
         </div>
         <Button variant="outline" onClick={() => navigate('/transactions')}>
@@ -73,17 +105,74 @@ export default function RecurringPage() {
         </Button>
       </div>
 
+      {/* Filters — only when there are recurring transactions */}
+      {!isLoading && hasRecurring && (
+        <div className="space-y-3">
+          {/* Type filter */}
+          <div className="flex gap-1.5 flex-wrap">
+            {([
+              { id: 'ALL', label: 'Todos' },
+              { id: 'INCOME', label: 'Entradas' },
+              { id: 'EXPENSE', label: 'Saídas' },
+            ] as { id: TypeFilter; label: string }[]).map(({ id, label }) => (
+              <button
+                key={id}
+                onClick={() => handleTypeFilter(id)}
+                className={cn(
+                  'px-3 py-1.5 rounded-full text-xs font-medium border transition-colors',
+                  typeFilter === id
+                    ? id === 'INCOME'
+                      ? 'bg-emerald-600 text-white border-emerald-600'
+                      : id === 'EXPENSE'
+                        ? 'bg-rose-600 text-white border-rose-600'
+                        : 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-background text-muted-foreground border-border hover:border-foreground/30',
+                )}
+              >
+                {id === 'INCOME' && <ArrowUpRight className="inline w-3 h-3 mr-1" />}
+                {id === 'EXPENSE' && <ArrowDownRight className="inline w-3 h-3 mr-1" />}
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Category filter — only categories that appear in current type */}
+          {activeCategories.length > 1 && (
+            <div className="flex gap-1.5 flex-wrap">
+              {activeCategories.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setCategoryFilter(categoryFilter === cat.id ? null : cat.id)}
+                  className={cn(
+                    'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors',
+                    categoryFilter === cat.id
+                      ? 'bg-foreground text-background border-foreground'
+                      : 'bg-background text-muted-foreground border-border hover:border-foreground/30',
+                  )}
+                >
+                  <span
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{ background: cat.color }}
+                  />
+                  {cat.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Content */}
       {isLoading ? (
         <div className="flex justify-center py-20">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
-      ) : templates.length === 0 ? (
+      ) : !hasRecurring ? (
         <Card>
           <CardContent className="flex flex-col items-center py-20 gap-4">
             <CalendarClock className="w-12 h-12 text-slate-300" />
             <div className="text-center">
-              <p className="text-slate-700 font-medium">Nenhuma transação recorrente</p>
+              <p className="text-slate-700 dark:text-slate-300 font-medium">Nenhuma transação recorrente</p>
               <p className="text-slate-400 text-sm mt-1">
                 Crie uma transação marcando a opção "Transação recorrente"
               </p>
@@ -94,9 +183,16 @@ export default function RecurringPage() {
             </Button>
           </CardContent>
         </Card>
+      ) : displayed.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-3">
+            <Repeat2 className="w-6 h-6 text-muted-foreground" />
+          </div>
+          <p className="text-sm text-muted-foreground">Nenhuma recorrência encontrada para este filtro.</p>
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {templates.map((t) => {
+          {displayed.map((t) => {
             const isIncome = t.type === 'INCOME'
             const account = accounts.find((a) => a.id === t.accountId)
             return (
@@ -113,7 +209,7 @@ export default function RecurringPage() {
                         : <ArrowDownRight className="w-5 h-5 text-rose-500" />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-slate-900 truncate">{t.description}</p>
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-50 truncate">{t.description}</p>
                       <div className="flex items-center gap-1.5 mt-0.5">
                         <span className="w-2 h-2 rounded-full shrink-0" style={{ background: t.category.color }} />
                         <span className="text-xs text-slate-500 truncate">{t.category.name}</span>
@@ -139,7 +235,7 @@ export default function RecurringPage() {
                       </Badge>
                     )}
                     {account && (
-                      <span className="flex items-center gap-1 text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                      <span className="flex items-center gap-1 text-xs text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
                         <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: account.color }} />
                         {account.name}
                       </span>
@@ -147,10 +243,10 @@ export default function RecurringPage() {
                   </div>
 
                   {/* Dates */}
-                  <div className="flex items-center gap-3 text-xs text-slate-400 border-t border-slate-100 pt-3">
-                    <span>Início: <span className="text-slate-600 font-medium">{formatDate(t.date)}</span></span>
+                  <div className="flex items-center gap-3 text-xs text-slate-400 border-t border-border pt-3">
+                    <span>Início: <span className="text-slate-600 dark:text-slate-300 font-medium">{formatDate(t.date)}</span></span>
                     {t.recurrenceEnd ? (
-                      <span>Fim: <span className="text-slate-600 font-medium">{formatDate(t.recurrenceEnd)}</span></span>
+                      <span>Fim: <span className="text-slate-600 dark:text-slate-300 font-medium">{formatDate(t.recurrenceEnd)}</span></span>
                     ) : (
                       <span className="text-slate-400">Sem encerramento</span>
                     )}

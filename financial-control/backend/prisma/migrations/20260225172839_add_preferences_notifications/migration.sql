@@ -1,0 +1,14 @@
+-- AlterTable
+ALTER TABLE "users" ADD COLUMN     "closingDay" INTEGER NOT NULL DEFAULT 1,
+ADD COLUMN     "currency" TEXT NOT NULL DEFAULT 'BRL',
+ADD COLUMN     "dateFormat" TEXT NOT NULL DEFAULT 'DD/MM/YYYY',
+ADD COLUMN     "emailBudget" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "emailDue" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "emailGoals" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "emailInsights" BOOLEAN NOT NULL DEFAULT false,
+ADD COLUMN     "locale" TEXT NOT NULL DEFAULT 'pt-BR',
+ADD COLUMN     "notifBudget" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN     "notifDue" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN     "notifGoals" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN     "notifInsights" BOOLEAN NOT NULL DEFAULT true,
+ADD COLUMN     "timezone" TEXT NOT NULL DEFAULT 'America/Sao_Paulo';

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '@/services/api'
-import { Liability } from '@/types'
+import { Liability, LiabilityPayment } from '@/types'
 
 export function useLiabilities() {
   const [liabilities, setLiabilities] = useState<Liability[]>([])
@@ -35,5 +35,16 @@ export function useLiabilities() {
     await fetch()
   }
 
-  return { liabilities, isLoading, refetch: fetch, create, update, remove }
+  const pay = async (id: string, payload: unknown) => {
+    const { data } = await api.post(`/liabilities/${id}/pay`, payload)
+    await fetch()
+    return data as { payment: LiabilityPayment; liability: Liability }
+  }
+
+  const getPayments = async (id: string): Promise<LiabilityPayment[]> => {
+    const { data } = await api.get(`/liabilities/${id}/payments`)
+    return data
+  }
+
+  return { liabilities, isLoading, refetch: fetch, create, update, remove, pay, getPayments }
 }

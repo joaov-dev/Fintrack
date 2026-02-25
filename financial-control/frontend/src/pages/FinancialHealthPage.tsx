@@ -1,7 +1,7 @@
-import { Loader2, HeartPulse } from 'lucide-react'
+import { Loader2, HeartPulse, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import { useFinancialHealth } from '@/hooks/useFinancialHealth'
 import { useInsights } from '@/hooks/useInsights'
-import { FinancialHealthData, FinancialHealthPillar } from '@/types'
+import { FinancialHealthData, FinancialHealthPillar, PillarTrend } from '@/types'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { AlertChip } from '@/components/dashboard/InsightsPanel'
 
@@ -31,43 +31,66 @@ function ScoreGauge({ score }: { score: number }) {
 
   return (
     <svg viewBox="0 0 200 115" className="w-60 mx-auto">
-      {/* Track */}
       <path
         d={`M ${cx - r},${cy} A ${r},${r} 0 0 1 ${cx + r},${cy}`}
-        fill="none"
-        stroke="#e2e8f0"
-        strokeWidth="13"
-        strokeLinecap="round"
+        fill="none" strokeWidth="13" strokeLinecap="round"
+        className="stroke-slate-200"
       />
-      {/* Progress */}
       <path
         d={`M ${cx - r},${cy} A ${r},${r} 0 0 1 ${cx + r},${cy}`}
-        fill="none"
-        stroke={color}
-        strokeWidth="13"
-        strokeLinecap="round"
+        fill="none" stroke={color} strokeWidth="13" strokeLinecap="round"
         strokeDasharray={`${filled} ${circumference}`}
         style={{ transition: 'stroke-dasharray 0.6s ease' }}
       />
-      {/* Score number */}
-      <text x="100" y="92" textAnchor="middle" fontSize="38" fontWeight="700" fill="#0f172a">
+      <text x="100" y="92" textAnchor="middle" fontSize="38" fontWeight="700"
+        className="fill-slate-900">
         {score}
       </text>
-      <text x="100" y="110" textAnchor="middle" fontSize="11" fill="#94a3b8">
+      <text x="100" y="110" textAnchor="middle" fontSize="11"
+        className="fill-slate-400">
         / 100
       </text>
     </svg>
   )
 }
 
-// ─── Pillar helpers ───────────────────────────────────────────────────────────
+// ─── Trend badge ──────────────────────────────────────────────────────────────
+
+function TrendBadge({ trend, label }: { trend: PillarTrend; label?: string }) {
+  if (trend === 'unknown') return null
+
+  const config = {
+    up:     { icon: TrendingUp,   cls: 'text-emerald-600 bg-emerald-50',  text: label ?? 'Melhorou' },
+    down:   { icon: TrendingDown, cls: 'text-rose-500 bg-rose-50',        text: label ?? 'Piorou' },
+    stable: { icon: Minus,        cls: 'text-slate-400 bg-slate-50',      text: 'Estável' },
+  }[trend]
+
+  const Icon = config.icon
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded ${config.cls}`}>
+      <Icon className="w-2.5 h-2.5" />
+      {config.text}
+    </span>
+  )
+}
+
+// ─── Score band label ─────────────────────────────────────────────────────────
+
+function scoreBandLabel(score: number): string {
+  if (score >= 75) return 'Ótimo'
+  if (score >= 50) return 'Regular'
+  if (score >= 25) return 'Atenção'
+  return 'Crítico'
+}
 
 function pillarScoreStyle(score: number) {
   if (score >= 75) return { badge: 'bg-emerald-100 text-emerald-700', bar: 'bg-emerald-500' }
-  if (score >= 50) return { badge: 'bg-amber-100 text-amber-700',   bar: 'bg-amber-500' }
-  if (score >= 25) return { badge: 'bg-orange-100 text-orange-700', bar: 'bg-orange-500' }
-  return              { badge: 'bg-rose-100 text-rose-700',         bar: 'bg-rose-500' }
+  if (score >= 50) return { badge: 'bg-amber-100 text-amber-700',     bar: 'bg-amber-500' }
+  if (score >= 25) return { badge: 'bg-orange-100 text-orange-700',   bar: 'bg-orange-500' }
+  return              { badge: 'bg-rose-100 text-rose-700',            bar: 'bg-rose-500' }
 }
+
+// ─── Pillar card ──────────────────────────────────────────────────────────────
 
 interface PillarCardProps {
   title: string
@@ -76,9 +99,10 @@ interface PillarCardProps {
   valueLabel: string
   valueDescription: string
   goal: string
+  trendLabel?: string
 }
 
-function PillarCard({ title, weight, pillar, valueLabel, valueDescription, goal }: PillarCardProps) {
+function PillarCard({ title, weight, pillar, valueLabel, valueDescription, goal, trendLabel }: PillarCardProps) {
   const style = pillarScoreStyle(pillar.score)
 
   return (
@@ -90,9 +114,14 @@ function PillarCard({ title, weight, pillar, valueLabel, valueDescription, goal 
           <span className="text-[10px] font-medium text-slate-400 whitespace-nowrap mt-0.5">{weight}</span>
         </div>
 
-        {/* Raw value */}
+        {/* Raw value + trend */}
         <div>
-          <p className="text-2xl font-bold text-slate-900">{valueLabel}</p>
+          <div className="flex items-end gap-2">
+            <p className="text-2xl font-bold text-slate-900">{valueLabel}</p>
+            <div className="pb-0.5">
+              <TrendBadge trend={pillar.trend} label={trendLabel} />
+            </div>
+          </div>
           <p className="text-xs text-slate-500 mt-0.5">{valueDescription}</p>
         </div>
 
@@ -101,7 +130,7 @@ function PillarCard({ title, weight, pillar, valueLabel, valueDescription, goal 
           <div className="flex items-center justify-between">
             <span className="text-xs text-slate-500">Pontuação</span>
             <span className={`text-xs font-semibold px-1.5 py-0.5 rounded ${style.badge}`}>
-              {pillar.score}/100
+              {scoreBandLabel(pillar.score)} · {pillar.score}/100
             </span>
           </div>
           <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
@@ -133,10 +162,10 @@ function getSummary(data: FinancialHealthData): string {
   const weakest = entries.reduce((min, p) => p.score < min.score ? p : min)
 
   const tips: Record<string, string> = {
-    savingsRate:      'Tente aumentar sua taxa de poupança reduzindo gastos não essenciais.',
-    incomeCommitment: 'Seus gastos fixos estão altos. Revise assinaturas e contratos recorrentes.',
-    creditDependency: 'Suas dívidas estão elevadas. Priorize quitar os passivos para ganhar fôlego financeiro.',
-    emergencyReserve: 'Reforce sua reserva de emergência — tente acumular ao menos 3 meses de despesas em contas líquidas.',
+    savingsRate:      'Suas despesas estão superando a renda. Revise gastos variáveis para retomar o saldo positivo.',
+    incomeCommitment: 'Seus gastos fixos estão comprometendo grande parte da renda. Avalie assinaturas e contratos.',
+    creditDependency: 'O volume de dívidas está elevado. Priorize quitar passivos para ganhar fôlego financeiro.',
+    emergencyReserve: 'Sua reserva de emergência está abaixo do recomendado. Tente acumular ao menos 3 meses de despesas.',
   }
 
   return tips[weakest.key] ?? 'Continue monitorando suas finanças regularmente.'
@@ -157,7 +186,7 @@ export default function FinancialHealthPage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Saúde Financeira</h1>
         <p className="text-slate-500 text-sm mt-0.5">
-          Score baseado nos últimos 3 meses de transações e patrimônio atual
+          Score baseado nos 3 meses completos anteriores comparado ao período anterior
         </p>
       </div>
 
@@ -226,24 +255,27 @@ export default function FinancialHealthPage() {
                 weight="30%"
                 pillar={data.pillars.savingsRate}
                 valueLabel={`${(data.pillars.savingsRate.value * 100).toFixed(1)}%`}
-                valueDescription="da renda economizada (últ. 3 meses)"
-                goal="Meta: ≥ 20% da renda"
+                valueDescription="da renda economizada nos últ. 3 meses"
+                goal="Meta: poupar ≥ 20% da renda"
+                trendLabel={data.pillars.savingsRate.trend === 'up' ? 'Melhorou' : undefined}
               />
               <PillarCard
-                title="Comprometimento da Renda"
+                title="Gastos Fixos"
                 weight="30%"
                 pillar={data.pillars.incomeCommitment}
                 valueLabel={`${(data.pillars.incomeCommitment.value * 100).toFixed(1)}%`}
-                valueDescription="da renda em gastos fixos recorrentes"
-                goal="Meta: ≤ 20% da renda"
+                valueDescription="da renda comprometida com recorrentes"
+                goal="Meta: manter abaixo de 50% da renda"
+                trendLabel={data.pillars.incomeCommitment.trend === 'up' ? 'Reduziu' : undefined}
               />
               <PillarCard
-                title="Dependência de Crédito"
+                title="Carga de Dívidas"
                 weight="20%"
                 pillar={data.pillars.creditDependency}
-                valueLabel={`${data.pillars.creditDependency.value.toFixed(2)}x`}
-                valueDescription="de passivos vs. 6 meses de renda"
-                goal="Meta: ≤ 0.25× a renda semestral"
+                valueLabel={`${(data.pillars.creditDependency.value * 6).toFixed(1)} meses`}
+                valueDescription="de renda necessários para quitar dívidas"
+                goal="Meta: dívidas < 3 meses de renda"
+                trendLabel={data.pillars.creditDependency.trend === 'up' ? 'Reduziu' : undefined}
               />
               <PillarCard
                 title="Reserva de Emergência"
@@ -264,12 +296,28 @@ export default function FinancialHealthPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="pb-4">
-              <ul className="text-xs text-slate-500 space-y-1 list-disc list-inside">
-                <li><span className="font-medium text-slate-600">Taxa de Poupança (30%)</span> — (Receita − Despesa) ÷ Receita nos últimos 3 meses</li>
-                <li><span className="font-medium text-slate-600">Comprometimento da Renda (30%)</span> — Gastos fixos recorrentes ÷ Receita nos últimos 3 meses</li>
-                <li><span className="font-medium text-slate-600">Dependência de Crédito (20%)</span> — Passivos totais ÷ (Renda mensal × 6)</li>
-                <li><span className="font-medium text-slate-600">Reserva de Emergência (20%)</span> — Saldo de contas líquidas ÷ Despesa mensal média</li>
+              <ul className="text-xs text-slate-500 space-y-1.5 list-disc list-inside">
+                <li>
+                  <span className="font-medium text-slate-600">Taxa de Poupança (30%)</span>
+                  {' '}— (Receita − Despesa) ÷ Receita · Meta ≥ 20%
+                </li>
+                <li>
+                  <span className="font-medium text-slate-600">Gastos Fixos (30%)</span>
+                  {' '}— Despesas recorrentes ÷ Receita · Meta ≤ 50%
+                </li>
+                <li>
+                  <span className="font-medium text-slate-600">Carga de Dívidas (20%)</span>
+                  {' '}— Passivos totais ÷ (Renda mensal × 6) · Meta &lt; 0,5× (≈ 3 meses de renda)
+                </li>
+                <li>
+                  <span className="font-medium text-slate-600">Reserva de Emergência (20%)</span>
+                  {' '}— Saldo líquido ÷ Despesa mensal média · Meta ≥ 6 meses
+                </li>
               </ul>
+              <p className="text-[11px] text-slate-400 mt-3">
+                Calculado com base nos 3 meses completos anteriores ao mês atual.
+                A tendência compara com os 3 meses antes desse período.
+              </p>
             </CardContent>
           </Card>
         </>

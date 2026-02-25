@@ -1,21 +1,29 @@
 import { useState } from 'react'
-import { Plus, Pencil, Trash2, AlertCircle, Calendar, Percent, CreditCard } from 'lucide-react'
+import { Plus, Pencil, Trash2, AlertCircle, Calendar, Percent, CreditCard, DollarSign, History } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { LiabilityModal } from '@/components/liabilities/LiabilityModal'
+import { PayLiabilityModal } from '@/components/liabilities/PayLiabilityModal'
+import { LiabilityHistoryDialog } from '@/components/liabilities/LiabilityHistoryDialog'
 import { useLiabilities } from '@/hooks/useLiabilities'
+import { useAccounts } from '@/hooks/useAccounts'
+import { useCategories } from '@/hooks/useCategories'
 import { useToast } from '@/hooks/use-toast'
 import { Liability, LIABILITY_TYPE_LABELS, LIABILITY_TYPE_COLORS } from '@/types'
 import { formatCurrency } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 
 export default function LiabilitiesPage() {
-  const { liabilities, isLoading, create, update, remove } = useLiabilities()
+  const { liabilities, isLoading, create, update, remove, pay, getPayments } = useLiabilities()
+  const { accounts } = useAccounts()
+  const { categories } = useCategories()
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Liability | null>(null)
+  const [payingLiability, setPayingLiability] = useState<Liability | null>(null)
+  const [historyLiability, setHistoryLiability] = useState<Liability | null>(null)
   const { toast } = useToast()
 
-  const totalLiabilities = liabilities.reduce((s, l) => s + l.currentBalance, 0)
+  const totalLiabilities = liabilities.reduce((s, l) => s + Number(l.currentBalance), 0)
 
   const handleSave = async (data: unknown) => {
     try {
@@ -41,6 +49,11 @@ export default function LiabilitiesPage() {
     }
   }
 
+  const handlePay = async (id: string, payload: Parameters<typeof pay>[1]) => {
+    await pay(id, payload)
+    toast({ title: 'Pagamento registrado' })
+  }
+
   const openEdit = (liability: Liability) => {
     setEditing(liability)
     setModalOpen(true)
@@ -61,7 +74,7 @@ export default function LiabilitiesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Passivos</h1>
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Passivos</h1>
           <p className="text-sm text-slate-500 mt-0.5">Dívidas e obrigações financeiras</p>
         </div>
         <Button onClick={openCreate} className="gap-2">
@@ -71,11 +84,11 @@ export default function LiabilitiesPage() {
       </div>
 
       {/* Summary card */}
-      <Card className="border-rose-100 bg-rose-50">
+      <Card className="border-rose-100 bg-rose-50 dark:border-rose-900 dark:bg-rose-950/30">
         <CardContent className="pt-5 pb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-900/50 flex items-center justify-center">
                 <AlertCircle className="w-5 h-5 text-rose-600" />
               </div>
               <div>
@@ -111,6 +124,8 @@ export default function LiabilitiesPage() {
               liability={liability}
               onEdit={() => openEdit(liability)}
               onDelete={() => handleDelete(liability)}
+              onPay={() => setPayingLiability(liability)}
+              onHistory={() => setHistoryLiability(liability)}
             />
           ))}
         </div>
@@ -122,6 +137,22 @@ export default function LiabilitiesPage() {
         onSave={handleSave}
         liability={editing}
       />
+
+      <PayLiabilityModal
+        open={payingLiability !== null}
+        onClose={() => setPayingLiability(null)}
+        onPay={handlePay}
+        liability={payingLiability}
+        accounts={accounts}
+        categories={categories}
+      />
+
+      <LiabilityHistoryDialog
+        open={historyLiability !== null}
+        onClose={() => setHistoryLiability(null)}
+        liability={historyLiability}
+        getPayments={getPayments}
+      />
     </div>
   )
 }
@@ -130,10 +161,14 @@ function LiabilityCard({
   liability,
   onEdit,
   onDelete,
+  onPay,
+  onHistory,
 }: {
   liability: Liability
   onEdit: () => void
   onDelete: () => void
+  onPay: () => void
+  onHistory: () => void
 }) {
   const isOverdue = liability.dueDate && new Date(liability.dueDate) < new Date()
 
@@ -147,18 +182,20 @@ function LiabilityCard({
                 {LIABILITY_TYPE_LABELS[liability.type]}
               </span>
             </div>
-            <h3 className="font-semibold text-slate-900 truncate">{liability.name}</h3>
+            <h3 className="font-semibold text-slate-900 dark:text-slate-50 truncate">{liability.name}</h3>
           </div>
           <div className="flex gap-1 shrink-0 ml-2">
             <button
               onClick={onEdit}
               className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+              title="Editar"
             >
               <Pencil className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={onDelete}
               className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+              title="Excluir"
             >
               <Trash2 className="w-3.5 h-3.5" />
             </button>
@@ -169,13 +206,13 @@ function LiabilityCard({
           {formatCurrency(liability.currentBalance)}
         </p>
 
-        <div className="space-y-1.5">
+        <div className="space-y-1.5 mb-4">
           {liability.installments != null ? (
             <div className="flex items-center gap-1.5 text-xs text-slate-500">
               <CreditCard className="w-3 h-3" />
               <span>
                 {liability.installments}× de{' '}
-                <span className="font-semibold text-slate-700">
+                <span className="font-semibold text-slate-700 dark:text-slate-300">
                   {formatCurrency(liability.currentBalance / liability.installments)}
                 </span>
                 /mês
@@ -199,6 +236,24 @@ function LiabilityCard({
           {liability.notes && (
             <p className="text-xs text-slate-400 truncate">{liability.notes}</p>
           )}
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex gap-2 pt-3 border-t border-border">
+          <button
+            onClick={onPay}
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 dark:text-emerald-400 dark:bg-emerald-950/40 dark:hover:bg-emerald-950/60 transition-colors"
+          >
+            <DollarSign className="w-3.5 h-3.5" />
+            Pagar
+          </button>
+          <button
+            onClick={onHistory}
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-medium text-slate-500 bg-slate-50 hover:bg-slate-100 dark:text-slate-400 dark:bg-slate-800/40 dark:hover:bg-slate-800/60 transition-colors"
+          >
+            <History className="w-3.5 h-3.5" />
+            Histórico
+          </button>
         </div>
       </CardContent>
     </Card>

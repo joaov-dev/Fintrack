@@ -13,21 +13,65 @@ model User {
   email        String   @unique
   passwordHash String
   avatar       String?
+  mfaSecret    String?
+  mfaEnabled   Boolean  @default(false)
+
+  // ── Preferências financeiras ─────────────────────────────────────────────────
+  currency     String   @default("BRL")
+  locale       String   @default("pt-BR")
+  timezone     String   @default("America/Sao_Paulo")
+  dateFormat   String   @default("DD/MM/YYYY")
+  closingDay   Int      @default(1)
+
+  // ── Preferências de notificação ──────────────────────────────────────────────
+  notifBudget   Boolean @default(true)
+  notifGoals    Boolean @default(true)
+  notifDue      Boolean @default(true)
+  notifInsights Boolean @default(true)
+  emailBudget   Boolean @default(false)
+  emailGoals    Boolean @default(false)
+  emailDue      Boolean @default(false)
+  emailInsights Boolean @default(false)
+
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  categories          Category[]
-  transactions        Transaction[]
-  accounts            Account[]
-  budgets             Budget[]
-  investmentPositions InvestmentPosition[]
-  liabilities         Liability[]
-  goals               Goal[]
-  creditCards         CreditCard[]
-  cardStatements      CardStatement[]
-  installmentPlans    InstallmentPlan[]
+  categories             Category[]
+  transactions           Transaction[]
+  accounts               Account[]
+  budgets                Budget[]
+  investmentPositions    InvestmentPosition[]
+  liabilities            Liability[]
+  goals                  Goal[]
+  creditCards            CreditCard[]
+  cardStatements         CardStatement[]
+  installmentPlans       InstallmentPlan[]
+  insights               Insight[]
+  microGoals             MicroGoal[]
+  liabilityPayments      LiabilityPayment[]
+  sessions               Session[]
+  tags                   Tag[]
+  transactionAttachments TransactionAttachment[]
+  categorizationRules    CategorizationRule[]
 
   @@map("users")
+}
+
+model Session {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
+  deviceName String?
+  ipAddress  String?
+  userAgent  String?
+  expiresAt  DateTime
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime  @default(now())
+  revokedAt  DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
 }
 
 model Account {
@@ -44,6 +88,7 @@ model Account {
   transactions        Transaction[]
   investmentPositions InvestmentPosition[]
   goals               Goal[]
+  categorizationRules CategorizationRule[]
 
   @@map("accounts")
 }
@@ -59,9 +104,10 @@ model Category {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transactions Transaction[]
-  budgets      Budget[]
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions        Transaction[]
+  budgets             Budget[]
+  categorizationRules CategorizationRule[]
 
   @@map("categories")
 }
@@ -105,6 +151,7 @@ model Transaction {
   isCardPayment     Boolean         @default(false)
   installmentPlanId String?
   installmentNumber Int?
+  splitId           String?
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
@@ -117,6 +164,8 @@ model Transaction {
   creditCard  CreditCard?         @relation(fields: [creditCardId], references: [id])
   statement   CardStatement?      @relation(fields: [statementId], references: [id])
   installment InstallmentPlan?    @relation(fields: [installmentPlanId], references: [id])
+  tags        Tag[]               @relation("TransactionTags")
+  attachments TransactionAttachment[]
 
   @@map("transactions")
 }
@@ -270,9 +319,33 @@ model Liability {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments LiabilityPayment[]
 
   @@map("liabilities")
+}
+
+model LiabilityPayment {
+  id               String   @id @default(cuid())
+  userId           String
+  liabilityId      String
+  installmentsPaid Int?
+  grossAmount      Decimal  @db.Decimal(12, 2)
+  discountType     String?
+  discountValue    Decimal? @db.Decimal(10, 4)
+  discountAmount   Decimal  @default(0) @db.Decimal(12, 2)
+  paidAmount       Decimal  @db.Decimal(12, 2)
+  accountId        String?
+  categoryId       String?
+  transactionId    String?  @unique
+  notes            String?
+  paidAt           DateTime
+  createdAt        DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  liability Liability @relation(fields: [liabilityId], references: [id], onDelete: Cascade)
+
+  @@map("liability_payments")
 }
 
 model Goal {
@@ -290,4 +363,142 @@ model Goal {
   account Account? @relation(fields: [linkedAccountId], references: [id], onDelete: SetNull)
 
   @@map("goals")
+}
+
+model Insight {
+  id           String          @id @default(cuid())
+  userId       String
+  type         InsightType
+  severity     InsightSeverity
+  status       InsightStatus   @default(ACTIVE)
+  title        String
+  message      String
+  explanation  String?
+  context      Json            @default("{}")
+  cta          Json?
+  dedupeKey    String
+  validFrom    DateTime
+  validTo      DateTime
+  snoozedUntil DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+  @@map("insights")
+}
+
+model MicroGoal {
+  id          String             @id @default(cuid())
+  userId      String
+  name        String
+  scopeType   MicroGoalScopeType
+  scopeRefId  String?
+  limitAmount Decimal            @db.Decimal(12, 2)
+  startDate   DateTime
+  endDate     DateTime
+  status      MicroGoalStatus    @default(ON_TRACK)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("micro_goals")
+}
+
+enum InsightType {
+  OUTLIER_SPEND
+  NEW_SUBSCRIPTION
+  CATEGORY_SPIKE
+  DUE_PAYMENT
+  BUDGET_AT_RISK
+  MICRO_GOAL_AT_RISK
+  MICRO_GOAL_BREACHED
+  NEGATIVE_CASHFLOW
+  HIGH_FIXED_COSTS
+  STAGNANT_NET_WORTH
+  LOW_EMERGENCY_RESERVE
+  HIGH_CREDIT_DEPENDENCY
+  HIGH_CC_UTILIZATION
+}
+
+enum InsightSeverity {
+  CRITICAL
+  WARNING
+  INFO
+}
+
+enum InsightStatus {
+  ACTIVE
+  DISMISSED
+  SNOOZED
+  RESOLVED
+}
+
+enum MicroGoalStatus {
+  ON_TRACK
+  AT_RISK
+  BREACHED
+  COMPLETED
+}
+
+enum MicroGoalScopeType {
+  CATEGORY
+  TOTAL_SPEND
+}
+
+// ── Tags (many-to-many com Transaction) ───────────────────────────────────────
+
+model Tag {
+  id     String @id @default(cuid())
+  userId String
+  name   String
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[] @relation("TransactionTags")
+
+  @@unique([userId, name])
+  @@map("tags")
+}
+
+// ── Anexos de Transação (base64 no DB) ────────────────────────────────────────
+
+model TransactionAttachment {
+  id            String   @id @default(cuid())
+  transactionId String
+  userId        String
+  filename      String
+  mimeType      String
+  size          Int
+  dataUrl       String   @db.Text
+  createdAt     DateTime @default(now())
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("transaction_attachments")
+}
+
+// ── Regras de Categorização Automática ────────────────────────────────────────
+
+model CategorizationRule {
+  id           String   @id @default(cuid())
+  userId       String
+  name         String
+  pattern      String
+  matchType    String   @default("CONTAINS")
+  categoryId   String
+  accountId    String?
+  isActive     Boolean  @default(true)
+  priority     Int      @default(0)
+  appliedCount Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  account  Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@map("categorization_rules")
 }

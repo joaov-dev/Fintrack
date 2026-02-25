@@ -228,7 +228,7 @@ function DashboardMockup() {
 // ─── Hero Section ─────────────────────────────────────────────────────────────
 function HeroSection() {
   return (
-    <section className="relative min-h-screen flex items-center overflow-hidden pt-16">
+    <section className="relative overflow-hidden pt-16 lg:min-h-screen lg:flex lg:items-center">
       {/* Dot grid */}
       <div
         className="absolute inset-0 opacity-25 dark:opacity-15 pointer-events-none"
@@ -241,7 +241,7 @@ function HeroSection() {
       <div className="absolute top-1/4 right-1/3 w-96 h-96 bg-primary/8 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute bottom-1/3 left-1/4 w-64 h-64 bg-primary/5 rounded-full blur-3xl pointer-events-none" />
 
-      <div className="relative max-w-6xl mx-auto px-5 py-24 w-full grid lg:grid-cols-2 gap-16 items-center">
+      <div className="relative max-w-6xl mx-auto px-5 pt-12 pb-16 lg:py-24 w-full grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
         {/* Left: text */}
         <div className="space-y-8">
           {/* Badge */}
@@ -289,6 +289,34 @@ function HeroSection() {
                 <span>{item}</span>
               </div>
             ))}
+          </div>
+
+          {/* Mobile-only mini stats preview */}
+          <div className="lg:hidden grid grid-cols-2 gap-3 pt-2">
+            <div className="rounded-2xl border border-border bg-card p-4">
+              <p className="text-xs text-muted-foreground">Saldo do Mês</p>
+              <p className="text-xl font-black mt-1" style={{ color: 'hsl(var(--primary))' }}>+R$ 1.240</p>
+              <p className="text-[11px] text-emerald-500 mt-0.5 font-medium">↑ 12% vs mês anterior</p>
+            </div>
+            <div className="rounded-2xl border border-border bg-card p-4">
+              <p className="text-xs text-muted-foreground">Saúde Financeira</p>
+              <p className="text-xl font-black mt-1" style={{ color: 'hsl(var(--primary))' }}>82 / 100</p>
+              <p className="text-[11px] text-emerald-500 mt-0.5 font-medium">Excelente</p>
+            </div>
+            <div className="rounded-2xl border border-border bg-card p-4">
+              <p className="text-xs text-muted-foreground mb-2">Meta: Reserva</p>
+              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: '55%', background: 'hsl(var(--primary))' }} />
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1.5">55% concluído</p>
+            </div>
+            <div className="rounded-2xl border border-border bg-card p-4">
+              <p className="text-xs text-muted-foreground mb-2">Budget: Alimentação</p>
+              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                <div className="h-full rounded-full bg-amber-500" style={{ width: '78%' }} />
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-1.5">78% utilizado</p>
+            </div>
           </div>
         </div>
 

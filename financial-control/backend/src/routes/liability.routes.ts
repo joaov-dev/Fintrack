@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { authenticate } from '../middlewares/auth.middleware'
-import { listLiabilities, createLiability, updateLiability, deleteLiability } from '../controllers/liability.controller'
+import { listLiabilities, createLiability, updateLiability, deleteLiability, payLiability, listLiabilityPayments } from '../controllers/liability.controller'
 
 export const liabilityRoutes = Router()
 
@@ -9,3 +9,5 @@ liabilityRoutes.get('/', listLiabilities)
 liabilityRoutes.post('/', createLiability)
 liabilityRoutes.put('/:id', updateLiability)
 liabilityRoutes.delete('/:id', deleteLiability)
+liabilityRoutes.post('/:id/pay', payLiability)
+liabilityRoutes.get('/:id/payments', listLiabilityPayments)

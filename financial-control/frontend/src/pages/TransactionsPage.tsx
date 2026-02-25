@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import {
-  Plus, Search, ArrowUpRight, ArrowDownRight, ArrowLeftRight, Pencil, Trash2, Loader2, ChevronLeft, ChevronRight, Upload, CreditCard,
+  Plus, Search, ArrowUpRight, ArrowDownRight, ArrowLeftRight, Pencil, Trash2, Loader2,
+  ChevronLeft, ChevronRight, Upload, CreditCard, Scissors, ChevronDown,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,6 +18,60 @@ import { useToast } from '@/hooks/use-toast'
 import { Transaction } from '@/types'
 import { formatCurrency, formatDate, monthLabel } from '@/lib/utils'
 import { cn } from '@/lib/utils'
+import { api } from '@/services/api'
+
+// ── Split grouping ─────────────────────────────────────────────────────────────
+
+interface SplitGroup {
+  splitId: string
+  parts: Transaction[]
+  totalAmount: number
+  type: string
+  date: string
+  description: string
+}
+
+type DisplayItem =
+  | { kind: 'transaction'; data: Transaction }
+  | { kind: 'split'; data: SplitGroup }
+
+function groupTransactions(transactions: Transaction[]): DisplayItem[] {
+  const splitGroups = new Map<string, Transaction[]>()
+  const items: DisplayItem[] = []
+
+  for (const t of transactions) {
+    if (t.splitId) {
+      if (!splitGroups.has(t.splitId)) splitGroups.set(t.splitId, [])
+      splitGroups.get(t.splitId)!.push(t)
+    } else {
+      items.push({ kind: 'transaction', data: t })
+    }
+  }
+
+  for (const [splitId, parts] of splitGroups) {
+    items.push({
+      kind: 'split',
+      data: {
+        splitId,
+        parts,
+        totalAmount: parts.reduce((s, p) => s + Number(p.amount), 0),
+        type: parts[0]?.type ?? 'EXPENSE',
+        date: parts[0]?.date ?? '',
+        description: parts[0]?.description ?? '',
+      },
+    })
+  }
+
+  items.sort((a, b) => {
+    const da = a.kind === 'transaction' ? a.data.date : a.data.date
+    const db = b.kind === 'transaction' ? b.data.date : b.data.date
+    return db.localeCompare(da)
+  })
+
+  return items
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 
 export default function TransactionsPage() {
   const now = new Date()
@@ -25,9 +80,17 @@ export default function TransactionsPage() {
   const [typeFilter, setTypeFilter] = useState<string>('ALL')
   const [categoryFilter, setCategoryFilter] = useState<string>('ALL')
   const [search, setSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [editing, setEditing] = useState<Transaction | null>(null)
+  const [expandedSplits, setExpandedSplits] = useState<Set<string>>(new Set())
+
+  // 400ms debounce for search
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 400)
+    return () => clearTimeout(t)
+  }, [search])
 
   const { toast } = useToast()
   const { categories } = useCategories()
@@ -37,8 +100,10 @@ export default function TransactionsPage() {
     year,
     type: typeFilter !== 'ALL' ? typeFilter : undefined,
     categoryId: categoryFilter !== 'ALL' ? categoryFilter : undefined,
-    search: search || undefined,
+    search: debouncedSearch || undefined,
   })
+
+  const displayItems = useMemo(() => groupTransactions(transactions), [transactions])
 
   const prevMonth = () => {
     if (month === 1) { setMonth(12); setYear(y => y - 1) }
@@ -55,8 +120,12 @@ export default function TransactionsPage() {
   const handleSave = async (data: unknown) => {
     try {
       if (editing) {
-        await update(editing.id, data)
+        await update(editing.id, data as Record<string, unknown>)
         toast({ title: 'Transação atualizada', variant: 'default' })
+      } else if (Array.isArray(data)) {
+        // Split already created in modal — just refetch
+        await refetch()
+        toast({ title: 'Rateio criado', variant: 'default' })
       } else {
         await create(data)
         toast({ title: 'Transação adicionada', variant: 'default' })
@@ -66,18 +135,37 @@ export default function TransactionsPage() {
     }
   }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('Confirmar exclusão?')) return
+  const handleDelete = async (id: string, splitId?: string) => {
+    const isSplitDelete = !!splitId
+    const msg = isSplitDelete ? 'Excluir todo o rateio (todas as partes)?' : 'Confirmar exclusão?'
+    if (!confirm(msg)) return
     try {
-      await remove(id)
+      if (isSplitDelete) {
+        await api.delete(`/transactions/${id}`, { params: { deleteAll: 'true' } })
+        await refetch()
+      } else {
+        await remove(id)
+      }
       toast({ title: 'Transação excluída' })
     } catch {
       toast({ title: 'Erro ao excluir', variant: 'destructive' })
     }
   }
 
-  const totalIncome = transactions.filter(t => t.type === 'INCOME' && !t.transferId).reduce((s, t) => s + Number(t.amount), 0)
-  const totalExpense = transactions.filter(t => t.type === 'EXPENSE' && !t.transferId).reduce((s, t) => s + Number(t.amount), 0)
+  const toggleSplit = (splitId: string) => {
+    setExpandedSplits(prev => {
+      const next = new Set(prev)
+      next.has(splitId) ? next.delete(splitId) : next.add(splitId)
+      return next
+    })
+  }
+
+  const totalIncome = transactions
+    .filter(t => t.type === 'INCOME' && !t.transferId)
+    .reduce((s, t) => s + Number(t.amount), 0)
+  const totalExpense = transactions
+    .filter(t => t.type === 'EXPENSE' && !t.transferId)
+    .reduce((s, t) => s + Number(t.amount), 0)
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -131,7 +219,7 @@ export default function TransactionsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <Input
             className="pl-9"
-            placeholder="Buscar transação..."
+            placeholder="Buscar por descrição, nota ou tag..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -164,7 +252,7 @@ export default function TransactionsPage() {
         <div className="flex justify-center py-16">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
-      ) : transactions.length === 0 ? (
+      ) : displayItems.length === 0 ? (
         <Card>
           <CardContent className="py-16 text-center">
             <p className="text-slate-400 text-sm">Nenhuma transação encontrada</p>
@@ -177,80 +265,176 @@ export default function TransactionsPage() {
         <Card>
           <CardContent className="p-0">
             <div className="divide-y divide-slate-100">
-              {transactions.map((t) => (
-                <div key={t.id} className="flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50/80 transition-colors group">
-                  <div className={cn(
-                    'w-9 h-9 rounded-lg flex items-center justify-center shrink-0',
-                    t.transferId ? 'bg-violet-100'
-                      : t.isCardPayment ? 'bg-pink-100'
-                      : t.paymentMethod === 'CREDIT_CARD' ? 'bg-indigo-100'
-                      : t.type === 'INCOME' ? 'bg-emerald-100' : 'bg-rose-100',
-                  )}>
-                    {t.transferId
-                      ? <ArrowLeftRight className="w-4 h-4 text-violet-600" />
-                      : t.isCardPayment
-                      ? <CreditCard className="w-4 h-4 text-pink-600" />
-                      : t.paymentMethod === 'CREDIT_CARD'
-                      ? <CreditCard className="w-4 h-4 text-indigo-600" />
-                      : t.type === 'INCOME'
-                        ? <ArrowUpRight className="w-4 h-4 text-emerald-600" />
-                        : <ArrowDownRight className="w-4 h-4 text-rose-600" />
-                    }
-                  </div>
+              {displayItems.map((item) => {
+                // ── Split group ──────────────────────────────────────────
+                if (item.kind === 'split') {
+                  const group = item.data
+                  const isExpanded = expandedSplits.has(group.splitId)
+                  return (
+                    <div key={group.splitId}>
+                      {/* Summary row */}
+                      <div
+                        className="flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50/80 transition-colors group cursor-pointer"
+                        onClick={() => toggleSplit(group.splitId)}
+                      >
+                        <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 bg-amber-100">
+                          <Scissors className="w-4 h-4 text-amber-600" />
+                        </div>
 
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-slate-900 truncate">{t.description}</p>
-                    <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                      {t.transferId ? (
-                        <span className="text-xs text-violet-500 font-medium">Transferência</span>
-                      ) : t.isCardPayment ? (
-                        <span className="text-xs text-pink-500 font-medium">Pagamento de Fatura</span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-xs text-slate-400">
-                          <span className="w-2 h-2 rounded-full" style={{ background: t.category.color }} />
-                          {t.category.name}
-                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-900 truncate">{group.description}</p>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-xs text-amber-600 font-medium">
+                              Rateio · {group.parts.length} partes
+                            </span>
+                            <span className="text-xs text-slate-300">·</span>
+                            <span className="text-xs text-slate-400">{formatDate(group.date)}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className={cn(
+                            'text-sm font-semibold',
+                            group.type === 'INCOME' ? 'text-emerald-600' : 'text-rose-600',
+                          )}>
+                            {group.type === 'INCOME' ? '+' : '-'} {formatCurrency(group.totalAmount)}
+                          </span>
+                          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button
+                              variant="ghost" size="icon"
+                              className="h-7 w-7 text-slate-400 hover:text-rose-600"
+                              onClick={(e) => { e.stopPropagation(); handleDelete(group.parts[0].id, group.splitId) }}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                          <ChevronDown className={cn(
+                            'w-4 h-4 text-slate-400 transition-transform',
+                            isExpanded && 'rotate-180',
+                          )} />
+                        </div>
+                      </div>
+
+                      {/* Expanded parts */}
+                      {isExpanded && (
+                        <div className="bg-amber-50/40 border-t border-amber-100 divide-y divide-amber-100/50">
+                          {group.parts.map((part) => (
+                            <div key={part.id} className="flex items-center gap-3 px-4 pl-14 py-2.5">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-xs font-medium text-slate-700 truncate">{part.description}</p>
+                                <span className="inline-flex items-center gap-1 text-xs text-slate-400">
+                                  <span className="w-2 h-2 rounded-full" style={{ background: part.category.color }} />
+                                  {part.category.name}
+                                </span>
+                              </div>
+                              <span className={cn(
+                                'text-xs font-semibold',
+                                part.type === 'INCOME' ? 'text-emerald-600' : 'text-rose-600',
+                              )}>
+                                {part.type === 'INCOME' ? '+' : '-'} {formatCurrency(Number(part.amount))}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       )}
-                      {t.paymentMethod === 'CREDIT_CARD' && !t.isCardPayment && (
-                        <span className="text-xs bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded font-medium">
-                          Cartão
-                          {t.installmentNumber != null ? ` ${t.installmentNumber}×` : ''}
-                        </span>
-                      )}
-                      <span className="text-xs text-slate-300">·</span>
-                      <span className="text-xs text-slate-400">{formatDate(t.date)}</span>
                     </div>
-                  </div>
+                  )
+                }
 
-                  <div className="flex items-center gap-3">
-                    <span className={cn(
-                      'text-sm font-semibold',
-                      t.transferId ? 'text-violet-600'
-                        : t.isCardPayment ? 'text-pink-600'
-                        : t.type === 'INCOME' ? 'text-emerald-600' : 'text-rose-600',
+                // ── Regular transaction ──────────────────────────────────
+                const t = item.data
+                return (
+                  <div key={t.id} className="flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50/80 transition-colors group">
+                    <div className={cn(
+                      'w-9 h-9 rounded-lg flex items-center justify-center shrink-0',
+                      t.transferId ? 'bg-violet-100'
+                        : t.isCardPayment ? 'bg-pink-100'
+                        : t.paymentMethod === 'CREDIT_CARD' ? 'bg-indigo-100'
+                        : t.type === 'INCOME' ? 'bg-emerald-100' : 'bg-rose-100',
                     )}>
-                      {t.transferId ? '' : t.type === 'INCOME' ? '+' : '-'} {formatCurrency(Number(t.amount))}
-                    </span>
+                      {t.transferId
+                        ? <ArrowLeftRight className="w-4 h-4 text-violet-600" />
+                        : t.isCardPayment
+                        ? <CreditCard className="w-4 h-4 text-pink-600" />
+                        : t.paymentMethod === 'CREDIT_CARD'
+                        ? <CreditCard className="w-4 h-4 text-indigo-600" />
+                        : t.type === 'INCOME'
+                          ? <ArrowUpRight className="w-4 h-4 text-emerald-600" />
+                          : <ArrowDownRight className="w-4 h-4 text-rose-600" />
+                      }
+                    </div>
 
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Button
-                        variant="ghost" size="icon"
-                        className="h-7 w-7 text-slate-400 hover:text-primary"
-                        onClick={() => { setEditing(t); setModalOpen(true) }}
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost" size="icon"
-                        className="h-7 w-7 text-slate-400 hover:text-rose-600"
-                        onClick={() => handleDelete(t.id)}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="text-sm font-medium text-slate-900 truncate">{t.description}</p>
+                        {t.tags && t.tags.length > 0 && (
+                          <>
+                            {t.tags.slice(0, 2).map((tag) => (
+                              <span key={tag.id} className="text-[10px] px-1.5 py-0.5 bg-primary/10 text-primary rounded-full shrink-0">
+                                #{tag.name}
+                              </span>
+                            ))}
+                            {t.tags.length > 2 && (
+                              <span className="text-[10px] text-slate-400">+{t.tags.length - 2}</span>
+                            )}
+                          </>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        {t.transferId ? (
+                          <span className="text-xs text-violet-500 font-medium">Transferência</span>
+                        ) : t.isCardPayment ? (
+                          <span className="text-xs text-pink-500 font-medium">Pagamento de Fatura</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs text-slate-400">
+                            <span className="w-2 h-2 rounded-full" style={{ background: t.category.color }} />
+                            {t.category.name}
+                          </span>
+                        )}
+                        {t.paymentMethod === 'CREDIT_CARD' && !t.isCardPayment && (
+                          <span className="text-xs bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded font-medium">
+                            Cartão
+                            {t.installmentNumber != null ? ` ${t.installmentNumber}×` : ''}
+                          </span>
+                        )}
+                        {t.attachments && t.attachments.length > 0 && (
+                          <span className="text-xs text-slate-400">📎 {t.attachments.length}</span>
+                        )}
+                        <span className="text-xs text-slate-300">·</span>
+                        <span className="text-xs text-slate-400">{formatDate(t.date)}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <span className={cn(
+                        'text-sm font-semibold',
+                        t.transferId ? 'text-violet-600'
+                          : t.isCardPayment ? 'text-pink-600'
+                          : t.type === 'INCOME' ? 'text-emerald-600' : 'text-rose-600',
+                      )}>
+                        {t.transferId ? '' : t.type === 'INCOME' ? '+' : '-'} {formatCurrency(Number(t.amount))}
+                      </span>
+
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                          variant="ghost" size="icon"
+                          className="h-7 w-7 text-slate-400 hover:text-primary"
+                          onClick={() => { setEditing(t); setModalOpen(true) }}
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost" size="icon"
+                          className="h-7 w-7 text-slate-400 hover:text-rose-600"
+                          onClick={() => handleDelete(t.id)}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </CardContent>
         </Card>

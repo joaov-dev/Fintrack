@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import express from 'express'
 import cors from 'cors'
+import cookieParser from 'cookie-parser'
 import { authRoutes } from './routes/auth.routes'
 import { categoryRoutes } from './routes/category.routes'
 import { transactionRoutes } from './routes/transaction.routes'
@@ -14,13 +15,21 @@ import { analyticsRoutes } from './routes/analytics.routes'
 import { importRoutes } from './routes/import.routes'
 import { goalsRoutes } from './routes/goals.routes'
 import { creditCardRoutes } from './routes/credit-cards.routes'
+import { microGoalsRoutes } from './routes/micro-goals.routes'
+import { categorizationRuleRoutes } from './routes/categorizationRule.routes'
 import { errorHandler } from './middlewares/error.middleware'
+import { authLimiter } from './middlewares/rateLimiter'
 
 const app = express()
 const PORT = process.env.PORT || 3333
 
 app.use(cors({ origin: 'http://localhost:5173', credentials: true }))
-app.use(express.json())
+app.use(express.json({ limit: '5mb' })) // large enough for base64-encoded profile photos (2 MB raw ≈ 2.7 MB base64)
+app.use(cookieParser())
+
+// Stricter limit on auth endpoints prone to bruteforce
+app.use('/api/auth/login', authLimiter)
+app.use('/api/auth/register', authLimiter)
 
 app.use('/api/auth', authRoutes)
 app.use('/api/categories', categoryRoutes)
@@ -35,6 +44,8 @@ app.use('/api/analytics', analyticsRoutes)
 app.use('/api/import', importRoutes)
 app.use('/api/goals', goalsRoutes)
 app.use('/api/credit-cards', creditCardRoutes)
+app.use('/api/micro-goals', microGoalsRoutes)
+app.use('/api/categorization-rules', categorizationRuleRoutes)
 
 app.use(errorHandler)
 

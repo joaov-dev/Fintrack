@@ -45,13 +45,39 @@ export async function createAccount(req: AuthRequest, res: Response) {
 
 export async function updateAccount(req: AuthRequest, res: Response) {
   const { id } = req.params
-  const data = accountSchema.partial().parse(req.body)
+
+  const updateSchema = accountSchema.partial().extend({
+    balance: z.number().optional(), // target balance → recalculates initialBalance
+  })
+  const { balance: targetBalance, ...data } = updateSchema.parse(req.body)
 
   const account = await prisma.account.findFirst({ where: { id, userId: req.userId } })
   if (!account) return res.status(404).json({ error: 'Conta não encontrada' })
 
+  // If a target balance was supplied, back-calculate the initialBalance needed
+  if (targetBalance !== undefined) {
+    const txs = await prisma.transaction.findMany({
+      where: { accountId: id },
+      select: { type: true, amount: true },
+    })
+    const txSum = txs.reduce(
+      (s, t) => s + (t.type === 'INCOME' ? Number(t.amount) : -Number(t.amount)),
+      0,
+    )
+    data.initialBalance = targetBalance - txSum
+  }
+
   const updated = await prisma.account.update({ where: { id }, data })
-  return res.json(updated)
+
+  // Return with computed balance for immediate UI consistency
+  const computedBalance = calcAccountBalance(
+    toNumber(updated.initialBalance),
+    (await prisma.transaction.findMany({
+      where: { accountId: id },
+      select: { type: true, amount: true },
+    })).map((t) => ({ type: t.type, amount: toNumber(t.amount) })),
+  )
+  return res.json({ ...updated, balance: computedBalance })
 }
 
 export async function deleteAccount(req: AuthRequest, res: Response) {

@@ -164,8 +164,8 @@ export async function generateInsights(
   const insights: Insight[] = []
 
   // ── Insight 1 — Negative cashflow ─────────────────────────────────────────
-  if (last4Months.length >= 3) {
-    const negativeCount = last4Months.filter(([, m]) => m.income - m.expense < 0).length
+  if (last4Months.length >= 3 && avg3mIncome > 0) {
+    const negativeCount = last4Months.filter(([, m]) => m.income > 0 && m.expense > m.income).length
 
     if (negativeCount >= 3) {
       const total = last4Months.length
@@ -219,35 +219,37 @@ export async function generateInsights(
   }
 
   // ── Insight 4 — Low emergency reserve ────────────────────────────────────
-  const emergencyMonths = avg3mExpense > 0 ? liquidBalance / avg3mExpense : liquidBalance > 0 ? 12 : 0
+  if (avg3mExpense > 0) {
+    const emergencyMonths = liquidBalance / avg3mExpense
 
-  if (emergencyMonths < 3) {
-    insights.push({
-      id: 'low-emergency-reserve',
-      severity: emergencyMonths < 1 ? 'CRITICAL' : 'WARNING',
-      title: 'Reserva de emergência baixa',
-      message: `Sua reserva cobre apenas ${emergencyMonths.toFixed(1)} ${emergencyMonths === 1 ? 'mês' : 'meses'} de despesas.`,
-      suggestedAction: 'Priorize a construção de uma reserva antes de novos investimentos.',
-      dataContext: { emergencyMonths: Math.round(emergencyMonths * 100) / 100, liquidBalance },
-    })
+    if (emergencyMonths < 3) {
+      insights.push({
+        id: 'low-emergency-reserve',
+        severity: emergencyMonths < 1 ? 'CRITICAL' : 'WARNING',
+        title: 'Reserva de emergência baixa',
+        message: `Sua reserva cobre apenas ${emergencyMonths.toFixed(1)} ${emergencyMonths === 1 ? 'mês' : 'meses'} de despesas.`,
+        suggestedAction: 'Priorize a construção de uma reserva antes de novos investimentos.',
+        dataContext: { emergencyMonths: Math.round(emergencyMonths * 100) / 100, liquidBalance },
+      })
+    }
   }
 
   // ── Insight 5 — High credit dependency ───────────────────────────────────
-  if (avg3mIncome > 0 || totalLiabilities > 0) {
-    const creditRatio =
-      avg3mIncome > 0 ? totalLiabilities / (avg3mIncome * 6) : totalLiabilities > 0 ? 2 : 0
+  if (avg3mIncome > 0) {
+    const debtMonths = totalLiabilities / avg3mIncome
 
-    if (creditRatio >= 0.75) {
+    if (debtMonths >= 6) {
+      const creditRatio = totalLiabilities / (avg3mIncome * 6)
       insights.push({
         id: 'high-credit-dependency',
-        severity: creditRatio > 1 ? 'CRITICAL' : 'WARNING',
+        severity: debtMonths > 18 ? 'CRITICAL' : 'WARNING',
         title: 'Dependência elevada de crédito',
         message:
-          creditRatio > 1
-            ? 'Suas dívidas equivalem a mais de 6 meses da sua renda.'
-            : `Suas dívidas equivalem a ${(creditRatio * 6).toFixed(1)} meses da sua renda.`,
+          debtMonths > 18
+            ? 'Suas dívidas equivalem a mais de 18 meses da sua renda.'
+            : `Suas dívidas equivalem a ${debtMonths.toFixed(1)} meses da sua renda.`,
         suggestedAction: 'Considere reduzir o uso de crédito ou renegociar passivos.',
-        dataContext: { creditRatio: Math.round(creditRatio * 1000) / 1000, totalLiabilities },
+        dataContext: { creditRatio: Math.round(creditRatio * 1000) / 1000, debtMonths: Math.round(debtMonths * 10) / 10, totalLiabilities },
       })
     }
   }

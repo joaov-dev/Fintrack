@@ -20,7 +20,7 @@ export default function DashboardPage() {
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [year, setYear] = useState(now.getFullYear())
   const { data, isLoading } = useDashboard(month, year)
-  const { data: insightsData } = useInsights()
+  const { data: insightsData, dismiss, snooze } = useInsights()
   const { user } = useAuthStore()
 
   const prevMonth = () => {
@@ -62,7 +62,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Insights & Alerts — shown when there is something actionable */}
-      {insightsData && <InsightsPanel data={insightsData} />}
+      {insightsData && <InsightsPanel data={insightsData} onDismiss={dismiss} onSnooze={snooze} />}
 
       {isLoading ? (
         <div className="flex items-center justify-center h-64">

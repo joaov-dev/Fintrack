@@ -1,9 +1,23 @@
 import { Response } from 'express'
 import { z } from 'zod'
+import { randomUUID } from 'crypto'
 import { AuthRequest } from '../middlewares/auth.middleware'
 import { prisma } from '../services/prisma'
 import { getOrCreateStatement, recalculateStatement } from '../services/cardStatementService'
 import { getInstallmentDate } from '../services/billingCycleUtils'
+import { suggestFromRules } from '../services/categorizationRules.service'
+
+// ── Shared include for all transaction responses ───────────────────────────────
+
+const TX_INCLUDE = {
+  category: true,
+  account: true,
+  statement: true,
+  tags: { select: { id: true, name: true } },
+  attachments: { select: { id: true, filename: true, mimeType: true, size: true } },
+} as const
+
+// ── Schemas ────────────────────────────────────────────────────────────────────
 
 const transactionSchema = z.object({
   categoryId: z.string().cuid(),
@@ -13,6 +27,7 @@ const transactionSchema = z.object({
   description: z.string().min(1),
   date: z.string().datetime(),
   notes: z.string().optional().nullable(),
+  tags: z.array(z.string().min(1).max(50)).optional(),
   isRecurring: z.boolean().optional().default(false),
   recurrenceType: z.enum(['WEEKLY', 'MONTHLY', 'YEARLY']).optional().nullable(),
   recurrenceEnd: z.string().datetime().optional().nullable(),
@@ -22,7 +37,45 @@ const transactionSchema = z.object({
   installments: z.number().int().min(1).max(48).optional().default(1),
 })
 
-/** Auto-generates recurring transaction instances for a given month if they don't exist yet */
+const splitSchema = z.object({
+  description: z.string().min(1),
+  date: z.string().datetime(),
+  type: z.enum(['INCOME', 'EXPENSE']),
+  accountId: z.string().cuid().optional().nullable(),
+  paymentMethod: z.enum(['CASH', 'DEBIT', 'PIX', 'CREDIT_CARD', 'TRANSFER']).optional().nullable(),
+  creditCardId: z.string().cuid().optional().nullable(),
+  notes: z.string().optional().nullable(),
+  parts: z.array(z.object({
+    categoryId: z.string().cuid(),
+    amount: z.number().positive(),
+    description: z.string().optional(),
+  })).min(2, 'Rateio requer ao menos 2 partes'),
+})
+
+const attachmentSchema = z.object({
+  filename: z.string().min(1).max(255),
+  mimeType: z.string().min(1).max(100),
+  dataUrl: z.string().min(1),  // base64 data URL
+})
+
+// ── Tag upsert helper ──────────────────────────────────────────────────────────
+
+async function upsertTags(tagNames: string[], userId: string) {
+  const results = await Promise.all(
+    tagNames.map((name) =>
+      prisma.tag.upsert({
+        where: { userId_name: { userId, name: name.toLowerCase() } },
+        create: { userId, name: name.toLowerCase() },
+        update: {},
+        select: { id: true },
+      }),
+    ),
+  )
+  return results.map((t) => ({ id: t.id }))
+}
+
+// ── Recurring generation ───────────────────────────────────────────────────────
+
 async function generateRecurringForMonth(userId: string, month: number, year: number) {
   const start = new Date(year, month - 1, 1)
   const end = new Date(year, month, 0, 23, 59, 59, 999)
@@ -92,11 +145,12 @@ async function generateRecurringForMonth(userId: string, month: number, year: nu
   }
 }
 
+// ── List ───────────────────────────────────────────────────────────────────────
+
 export async function listTransactions(req: AuthRequest, res: Response) {
   const {
     month, year, type, categoryId, accountId, search, isRecurring, startDate, endDate,
-    creditCardId, statementId, paymentMethod,
-    includeCardPayments,
+    creditCardId, statementId, paymentMethod, includeCardPayments,
   } = req.query
 
   if (month && year && !isRecurring) {
@@ -110,30 +164,40 @@ export async function listTransactions(req: AuthRequest, res: Response) {
     where.parentId = null
   } else if (month && year) {
     const start = new Date(Number(year), Number(month) - 1, 1)
-    const end = new Date(Number(year), Number(month), 0, 23, 59, 59, 999)
+    const end   = new Date(Number(year), Number(month), 0, 23, 59, 59, 999)
     where.date = { gte: start, lte: end }
   } else if (startDate && endDate) {
     where.date = { gte: new Date(String(startDate)), lte: new Date(String(endDate)) }
   }
 
-  if (type) where.type = type
-  if (categoryId) where.categoryId = categoryId
-  if (accountId) where.accountId = accountId
-  if (search) where.description = { contains: String(search), mode: 'insensitive' }
+  if (type)        where.type        = type
+  if (categoryId)  where.categoryId  = categoryId
+  if (accountId)   where.accountId   = accountId
   if (creditCardId) where.creditCardId = creditCardId
   if (statementId) where.statementId = statementId
   if (paymentMethod) where.paymentMethod = paymentMethod
-  // By default, hide card payment transactions (they are liability reductions, not expenses)
   if (includeCardPayments !== 'true') where.isCardPayment = { not: true }
+
+  // Full-text search: description OR notes OR tag name
+  if (search) {
+    const s = String(search)
+    where.OR = [
+      { description: { contains: s, mode: 'insensitive' } },
+      { notes:       { contains: s, mode: 'insensitive' } },
+      { tags:        { some: { name: { contains: s, mode: 'insensitive' } } } },
+    ]
+  }
 
   const transactions = await prisma.transaction.findMany({
     where,
-    include: { category: true, account: true, statement: true },
+    include: TX_INCLUDE,
     orderBy: { date: 'desc' },
   })
 
   return res.json(transactions)
 }
+
+// ── Create ─────────────────────────────────────────────────────────────────────
 
 export async function createTransaction(req: AuthRequest, res: Response) {
   const data = transactionSchema.parse(req.body)
@@ -151,6 +215,11 @@ export async function createTransaction(req: AuthRequest, res: Response) {
     return res.status(400).json({ error: 'Informe o tipo de recorrência' })
   }
 
+  // Prepare tags connect-or-create
+  const tagConnect = data.tags?.length
+    ? { tags: { connect: await upsertTags(data.tags, userId) } }
+    : {}
+
   // ── Credit card purchase ────────────────────────────────────────────────
   if (data.paymentMethod === 'CREDIT_CARD') {
     if (!data.creditCardId) {
@@ -163,7 +232,6 @@ export async function createTransaction(req: AuthRequest, res: Response) {
     const installments = data.installments ?? 1
 
     if (installments > 1) {
-      // ── Parcelamento ────────────────────────────────────────────────────
       const installmentAmount = parseFloat((data.amount / installments).toFixed(2))
       const remainder = parseFloat((data.amount - installmentAmount * installments).toFixed(2))
 
@@ -199,8 +267,9 @@ export async function createTransaction(req: AuthRequest, res: Response) {
             statementId,
             installmentPlanId: plan.id,
             installmentNumber: i,
+            ...(i === 1 ? tagConnect : {}),
           },
-          include: { category: true, account: true, statement: true },
+          include: TX_INCLUDE,
         })
         createdTxs.push(tx)
         await recalculateStatement(statementId, prisma)
@@ -208,7 +277,6 @@ export async function createTransaction(req: AuthRequest, res: Response) {
 
       return res.status(201).json(createdTxs[0])
     } else {
-      // ── Compra à vista no cartão ────────────────────────────────────────
       const statementId = await getOrCreateStatement(data.creditCardId, userId, txDate, prisma)
       const transaction = await prisma.transaction.create({
         data: {
@@ -222,8 +290,9 @@ export async function createTransaction(req: AuthRequest, res: Response) {
           paymentMethod: 'CREDIT_CARD',
           creditCardId: data.creditCardId,
           statementId,
+          ...tagConnect,
         },
-        include: { category: true, account: true, statement: true },
+        include: TX_INCLUDE,
       })
       await recalculateStatement(statementId, prisma)
       return res.status(201).json(transaction)
@@ -232,18 +301,64 @@ export async function createTransaction(req: AuthRequest, res: Response) {
 
   // ── Regular transaction ────────────────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { installments: _installments, ...restData } = data
+  const { installments: _inst, tags: _tags, ...restData } = data
   const transaction = await prisma.transaction.create({
     data: {
       ...restData,
       userId,
       date: new Date(data.date),
       recurrenceEnd: data.recurrenceEnd ? new Date(data.recurrenceEnd) : null,
+      ...tagConnect,
     },
-    include: { category: true, account: true },
+    include: TX_INCLUDE,
   })
   return res.status(201).json(transaction)
 }
+
+// ── Create Split Transaction (rateio) ──────────────────────────────────────────
+
+export async function createSplitTransaction(req: AuthRequest, res: Response) {
+  const data = splitSchema.parse(req.body)
+  const userId = req.userId!
+
+  if (data.accountId) {
+    const account = await prisma.account.findFirst({ where: { id: data.accountId, userId } })
+    if (!account) return res.status(400).json({ error: 'Conta inválida' })
+  }
+
+  for (const part of data.parts) {
+    const cat = await prisma.category.findFirst({ where: { id: part.categoryId, userId } })
+    if (!cat) return res.status(400).json({ error: `Categoria inválida: ${part.categoryId}` })
+  }
+
+  const splitId = randomUUID()
+  const txDate  = new Date(data.date)
+  const created = []
+
+  for (const part of data.parts) {
+    const tx = await prisma.transaction.create({
+      data: {
+        userId,
+        categoryId:    part.categoryId,
+        type:          data.type,
+        amount:        part.amount,
+        description:   part.description ?? data.description,
+        date:          txDate,
+        notes:         data.notes ?? null,
+        accountId:     data.accountId ?? null,
+        paymentMethod: data.paymentMethod ?? null,
+        creditCardId:  data.creditCardId ?? null,
+        splitId,
+      },
+      include: TX_INCLUDE,
+    })
+    created.push(tx)
+  }
+
+  return res.status(201).json(created)
+}
+
+// ── Update ─────────────────────────────────────────────────────────────────────
 
 export async function updateTransaction(req: AuthRequest, res: Response) {
   const { id } = req.params
@@ -257,19 +372,24 @@ export async function updateTransaction(req: AuthRequest, res: Response) {
     if (!category) return res.status(400).json({ error: 'Categoria inválida' })
   }
 
+  // Prepare tag update (replace all tags if provided)
+  const tagUpdate = data.tags !== undefined
+    ? { tags: { set: await upsertTags(data.tags ?? [], req.userId!) } }
+    : {}
+
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { installments: _installments2, ...updateData } = data
+  const { installments: _inst2, tags: _tags2, ...updateData } = data
   const updated = await prisma.transaction.update({
     where: { id },
     data: {
       ...updateData,
       date: data.date ? new Date(data.date) : undefined,
       recurrenceEnd: data.recurrenceEnd ? new Date(data.recurrenceEnd) : null,
+      ...tagUpdate,
     },
-    include: { category: true, account: true, statement: true },
+    include: TX_INCLUDE,
   })
 
-  // Recalculate affected statement if amount changed
   if (transaction.statementId && (data.amount !== undefined || data.date !== undefined)) {
     await recalculateStatement(transaction.statementId, prisma)
   }
@@ -277,11 +397,20 @@ export async function updateTransaction(req: AuthRequest, res: Response) {
   return res.json(updated)
 }
 
+// ── Delete ─────────────────────────────────────────────────────────────────────
+
 export async function deleteTransaction(req: AuthRequest, res: Response) {
   const { id } = req.params
+  const deleteAll = req.query.deleteAll === 'true'
 
   const transaction = await prisma.transaction.findFirst({ where: { id, userId: req.userId } })
   if (!transaction) return res.status(404).json({ error: 'Transação não encontrada' })
+
+  // Delete all parts of a split group
+  if (deleteAll && transaction.splitId) {
+    await prisma.transaction.deleteMany({ where: { splitId: transaction.splitId, userId: req.userId } })
+    return res.status(204).send()
+  }
 
   if (transaction.isRecurring) {
     await prisma.transaction.deleteMany({ where: { parentId: id } })
@@ -289,10 +418,73 @@ export async function deleteTransaction(req: AuthRequest, res: Response) {
 
   await prisma.transaction.delete({ where: { id } })
 
-  // Recalculate statement if this was a CC transaction
   if (transaction.statementId) {
     await recalculateStatement(transaction.statementId, prisma)
   }
 
   return res.status(204).send()
+}
+
+// ── Suggest category from rules ────────────────────────────────────────────────
+
+export async function suggestCategory(req: AuthRequest, res: Response) {
+  const { description } = req.query
+  if (!description) return res.json(null)
+
+  const suggestion = await suggestFromRules(String(description), req.userId!, prisma)
+  return res.json(suggestion)
+}
+
+// ── Attachments ────────────────────────────────────────────────────────────────
+
+export async function addAttachment(req: AuthRequest, res: Response) {
+  const { id } = req.params
+  const { filename, mimeType, dataUrl } = attachmentSchema.parse(req.body)
+
+  const transaction = await prisma.transaction.findFirst({ where: { id, userId: req.userId } })
+  if (!transaction) return res.status(404).json({ error: 'Transação não encontrada' })
+
+  // Estimate size from base64 length
+  const base64Data = dataUrl.split(',')[1] ?? dataUrl
+  const size = Math.round(base64Data.length * 0.75)
+
+  const attachment = await prisma.transactionAttachment.create({
+    data: { transactionId: id, userId: req.userId!, filename, mimeType, size, dataUrl },
+    select: { id: true, filename: true, mimeType: true, size: true, createdAt: true },
+  })
+  return res.status(201).json(attachment)
+}
+
+export async function getAttachment(req: AuthRequest, res: Response) {
+  const { id, aid } = req.params
+
+  const attachment = await prisma.transactionAttachment.findFirst({
+    where: { id: aid, transactionId: id, userId: req.userId },
+  })
+  if (!attachment) return res.status(404).json({ error: 'Anexo não encontrado' })
+
+  return res.json(attachment)
+}
+
+export async function deleteAttachment(req: AuthRequest, res: Response) {
+  const { id, aid } = req.params
+
+  const attachment = await prisma.transactionAttachment.findFirst({
+    where: { id: aid, transactionId: id, userId: req.userId },
+  })
+  if (!attachment) return res.status(404).json({ error: 'Anexo não encontrado' })
+
+  await prisma.transactionAttachment.delete({ where: { id: aid } })
+  return res.status(204).send()
+}
+
+// ── List tags (for autocomplete) ───────────────────────────────────────────────
+
+export async function listTags(req: AuthRequest, res: Response) {
+  const tags = await prisma.tag.findMany({
+    where: { userId: req.userId },
+    orderBy: { name: 'asc' },
+    select: { id: true, name: true },
+  })
+  return res.json(tags)
 }

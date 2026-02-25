@@ -215,7 +215,7 @@ export function ImportModal({ open, onClose, onSuccess }: ImportModalProps) {
           category:    detected.category    ?? null,
         }
         setMapping(m)
-        setStep(isMappingComplete(m) ? 'preview' : 'mapping')
+        setStep(isMappingComplete(m as unknown as Record<string, string | null>) ? 'preview' : 'mapping')
       } catch {
         setParseError('Erro ao processar o arquivo. Verifique se é um CSV válido.')
       }
@@ -230,9 +230,33 @@ export function ImportModal({ open, onClose, onSuccess }: ImportModalProps) {
   }, [handleFile])
 
   // ── Step 2 → 3: Apply mapping and build preview ────────────────────────────
-  const applyMappingAndPreview = () => {
+  const applyMappingAndPreview = async () => {
     const rows = buildPreviewRows(csvRows, mapping, accountMap, categoryMap)
-    setPreviewRows(rows)
+
+    // Check for duplicates against the database
+    const validRows = rows.map((r, i) => ({
+      index: i,
+      date: r.date,
+      description: r.description,
+      amount: parseAmount(r.amount),
+      type: (r.overrideType ?? normalizeType(r.type)) as string,
+    })).filter((r) => r.type && r.date && r.description && r.amount > 0)
+
+    try {
+      const { data } = await api.post('/import/check-duplicates', {
+        rows: validRows.map(({ date, description, amount, type }) => ({ date, description, amount, type })),
+      })
+      const duplicateIndices = new Set<number>((data.duplicates as number[]).map((i) => validRows[i]?.index ?? -1))
+      const markedRows = rows.map((r, i) => ({
+        ...r,
+        isDuplicate: duplicateIndices.has(i),
+        ignored: duplicateIndices.has(i) ? true : r.ignored,
+      }))
+      setPreviewRows(markedRows)
+    } catch {
+      setPreviewRows(rows)
+    }
+
     setStep('preview')
   }
 
@@ -378,7 +402,7 @@ export function ImportModal({ open, onClose, onSuccess }: ImportModalProps) {
                 Voltar
               </Button>
               <Button
-                disabled={!isMappingComplete(mapping)}
+                disabled={!isMappingComplete(mapping as unknown as Record<string, string | null>)}
                 onClick={applyMappingAndPreview}
               >
                 Continuar
@@ -404,6 +428,11 @@ export function ImportModal({ open, onClose, onSuccess }: ImportModalProps) {
               {previewRows.filter((r) => r.ignored).length > 0 && (
                 <span className="text-slate-400">
                   {previewRows.filter((r) => r.ignored).length} ignoradas
+                </span>
+              )}
+              {previewRows.filter((r) => r.isDuplicate).length > 0 && (
+                <span className="text-amber-600 font-medium">
+                  ⚠ {previewRows.filter((r) => r.isDuplicate).length} possíveis duplicatas
                 </span>
               )}
               <label className="flex items-center gap-1.5 ml-auto cursor-pointer">
@@ -440,13 +469,21 @@ export function ImportModal({ open, onClose, onSuccess }: ImportModalProps) {
                         key={row._id}
                         className={cn(
                           row.ignored ? 'opacity-40 bg-slate-50' :
-                          hasError    ? 'bg-rose-50' : '',
+                          hasError    ? 'bg-rose-50' :
+                          row.isDuplicate ? 'bg-amber-50/60' : '',
                         )}
                       >
                         <td className="px-3 py-1.5 text-slate-400">{idx + 1}</td>
                         <td className="px-3 py-1.5">{row.date}</td>
-                        <td className="px-3 py-1.5 max-w-[160px] truncate" title={row.description}>
-                          {row.description}
+                        <td className="px-3 py-1.5 max-w-[160px]" title={row.description}>
+                          <div className="flex items-center gap-1.5">
+                            <span className="truncate">{row.description}</span>
+                            {row.isDuplicate && !row.ignored && (
+                              <span className="shrink-0 text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded font-medium border border-amber-200">
+                                duplicata
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-3 py-1.5 text-right font-mono">{row.amount}</td>
                         {/* Type */}
@@ -562,6 +599,14 @@ export function ImportModal({ open, onClose, onSuccess }: ImportModalProps) {
                   {previewRows.length - activeRows.length}
                 </span>
               </div>
+              {previewRows.filter((r) => r.isDuplicate && r.ignored).length > 0 && (
+                <div className="px-5 py-4 flex justify-between">
+                  <span className="text-sm text-amber-700">Duplicatas ignoradas automaticamente</span>
+                  <span className="text-sm font-semibold text-amber-700">
+                    {previewRows.filter((r) => r.isDuplicate && r.ignored).length}
+                  </span>
+                </div>
+              )}
               <div className="px-5 py-4 flex justify-between">
                 <span className="text-sm text-slate-600">Período</span>
                 <span className="text-sm font-mono text-slate-700">{dateRange}</span>

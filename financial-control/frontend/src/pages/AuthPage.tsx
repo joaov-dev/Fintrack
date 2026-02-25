@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { TrendingUp, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { TrendingUp, Eye, EyeOff, Loader2, ShieldCheck } from 'lucide-react'
 import { useAuthStore } from '@/store/auth.store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,7 +12,8 @@ export default function AuthPage() {
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [showPassword, setShowPassword] = useState(false)
   const [form, setForm] = useState({ name: '', email: '', password: '' })
-  const { login, register, isLoading } = useAuthStore()
+  const [mfaCode, setMfaCode] = useState('')
+  const { login, register, verifyMfa, isLoading, requiresMfa } = useAuthStore()
   const navigate = useNavigate()
   const { toast } = useToast()
 
@@ -21,10 +22,12 @@ export default function AuthPage() {
     try {
       if (mode === 'login') {
         await login(form.email, form.password)
+        // If MFA is required, stay on page — requiresMfa state handles the UI
+        if (!useAuthStore.getState().requiresMfa) navigate('/')
       } else {
         await register(form.name, form.email, form.password)
+        navigate('/')
       }
-      navigate('/')
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
@@ -33,6 +36,72 @@ export default function AuthPage() {
     }
   }
 
+  const handleMfaSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    try {
+      await verifyMfa(mfaCode)
+      navigate('/')
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+        'Código inválido. Tente novamente.'
+      toast({ title: 'Erro', description: msg, variant: 'destructive' })
+      setMfaCode('')
+    }
+  }
+
+  // ── MFA step ────────────────────────────────────────────────────────────────
+  if (requiresMfa) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-violet-50/30 to-slate-100 flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-primary mb-4 shadow-lg shadow-violet-200">
+              <TrendingUp className="w-7 h-7 text-white" />
+            </div>
+            <h1 className="text-2xl font-bold text-slate-900">DominaHub</h1>
+            <p className="text-slate-500 text-sm mt-1">Verificação em dois fatores</p>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-full bg-violet-100 flex items-center justify-center shrink-0">
+                <ShieldCheck className="w-5 h-5 text-violet-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-800">Autenticação em dois fatores</p>
+                <p className="text-xs text-slate-500">Digite o código de 6 dígitos do seu aplicativo autenticador</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleMfaSubmit} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="mfa-code">Código TOTP</Label>
+                <Input
+                  id="mfa-code"
+                  placeholder="000000"
+                  value={mfaCode}
+                  onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  maxLength={6}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  className="text-center text-lg tracking-widest font-mono"
+                  required
+                />
+              </div>
+
+              <Button type="submit" className="w-full mt-2" disabled={isLoading || mfaCode.length !== 6}>
+                {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                Verificar
+              </Button>
+            </form>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Login / Register step ────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-violet-50/30 to-slate-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md">

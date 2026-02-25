@@ -3,7 +3,6 @@ import { AuthRequest } from '../middlewares/auth.middleware'
 import { prisma } from '../services/prisma'
 import { getCurrentNetWorth, getNetWorthHistory } from '../services/netWorthService'
 import { getFinancialHealth } from '../services/financialHealthService'
-import { generateInsights } from '../services/insightsService'
 import { getMonthlyProjection } from '../services/monthlyProjectionService'
 
 export async function getNetWorth(req: AuthRequest, res: Response) {
@@ -19,11 +18,6 @@ export async function getNetWorthHistoryHandler(req: AuthRequest, res: Response)
 
 export async function getFinancialHealthHandler(req: AuthRequest, res: Response) {
   const data = await getFinancialHealth(req.userId!, prisma)
-  return res.json(data)
-}
-
-export async function getInsightsHandler(req: AuthRequest, res: Response) {
-  const data = await generateInsights(req.userId!, prisma)
   return res.json(data)
 }
 
