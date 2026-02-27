@@ -29,7 +29,7 @@ const transactionSchema = z.object({
   notes: z.string().optional().nullable(),
   tags: z.array(z.string().min(1).max(50)).optional(),
   isRecurring: z.boolean().optional().default(false),
-  recurrenceType: z.enum(['WEEKLY', 'MONTHLY', 'YEARLY']).optional().nullable(),
+  recurrenceType: z.enum(['WEEKLY', 'MONTHLY', 'YEARLY', 'LAST_DAY', 'BUSINESS_DAYS']).optional().nullable(),
   recurrenceEnd: z.string().datetime().optional().nullable(),
   // Credit card fields
   paymentMethod: z.enum(['CASH', 'DEBIT', 'PIX', 'CREDIT_CARD', 'TRANSFER']).optional().nullable(),
@@ -76,14 +76,24 @@ async function upsertTags(tagNames: string[], userId: string) {
 
 // ── Recurring generation ───────────────────────────────────────────────────────
 
+/** Returns the first Monday-Friday day from `d` onwards */
+function nextBusinessDay(d: Date): Date {
+  const result = new Date(d)
+  while (result.getDay() === 0 || result.getDay() === 6) {
+    result.setDate(result.getDate() + 1)
+  }
+  return result
+}
+
 async function generateRecurringForMonth(userId: string, month: number, year: number) {
   const start = new Date(year, month - 1, 1)
-  const end = new Date(year, month, 0, 23, 59, 59, 999)
+  const end   = new Date(year, month, 0, 23, 59, 59, 999)
 
   const templates = await prisma.transaction.findMany({
     where: {
       userId,
       isRecurring: true,
+      isPaused: false,           // skip paused series
       date: { lt: start },
       OR: [{ recurrenceEnd: null }, { recurrenceEnd: { gte: start } }],
     },
@@ -92,16 +102,16 @@ async function generateRecurringForMonth(userId: string, month: number, year: nu
   for (const tpl of templates) {
     if (!tpl.recurrenceType) continue
 
+    // ── WEEKLY: one instance per matching weekday ─────────────────────────────
     if (tpl.recurrenceType === 'WEEKLY') {
       const targetDay = new Date(tpl.date).getDay()
       const d = new Date(year, month - 1, 1)
       while (d <= end) {
         if (d.getDay() === targetDay) {
+          const dayStart = new Date(d)
+          const dayEnd   = new Date(d.getTime() + 86399999)
           const exists = await prisma.transaction.findFirst({
-            where: {
-              parentId: tpl.id,
-              date: { gte: new Date(d), lte: new Date(d.getTime() + 86399999) },
-            },
+            where: { parentId: tpl.id, date: { gte: dayStart, lte: dayEnd } },
           })
           if (!exists) {
             await prisma.transaction.create({
@@ -118,30 +128,41 @@ async function generateRecurringForMonth(userId: string, month: number, year: nu
       continue
     }
 
+    // ── Monthly, Yearly, Last Day, Business Days: one instance per month ──────
     const tplDate = new Date(tpl.date)
     let instanceDate: Date | null = null
 
     if (tpl.recurrenceType === 'MONTHLY') {
+      // Same day of month as template (clamped to last day if needed)
       const day = Math.min(tplDate.getDate(), new Date(year, month, 0).getDate())
       instanceDate = new Date(year, month - 1, day, 12)
-    } else if (tpl.recurrenceType === 'YEARLY' && tplDate.getMonth() === month - 1) {
+    } else if (tpl.recurrenceType === 'YEARLY') {
+      if (tplDate.getMonth() !== month - 1) continue
       instanceDate = new Date(year, month - 1, tplDate.getDate(), 12)
+    } else if (tpl.recurrenceType === 'LAST_DAY') {
+      // Last calendar day of the month
+      const lastDay = new Date(year, month, 0).getDate()
+      instanceDate = new Date(year, month - 1, lastDay, 12)
+    } else if (tpl.recurrenceType === 'BUSINESS_DAYS') {
+      // First business day (Mon–Fri) of the month
+      instanceDate = nextBusinessDay(new Date(year, month - 1, 1, 12))
     }
 
     if (!instanceDate) continue
 
+    // Only create if no instance already exists for this month (including skipped)
     const exists = await prisma.transaction.findFirst({
       where: { parentId: tpl.id, date: { gte: start, lte: end } },
     })
-    if (!exists) {
-      await prisma.transaction.create({
-        data: {
-          userId: tpl.userId, categoryId: tpl.categoryId, accountId: tpl.accountId,
-          type: tpl.type, amount: tpl.amount, description: tpl.description,
-          notes: tpl.notes, date: instanceDate, isRecurring: false, parentId: tpl.id,
-        },
-      })
-    }
+    if (exists) continue
+
+    await prisma.transaction.create({
+      data: {
+        userId: tpl.userId, categoryId: tpl.categoryId, accountId: tpl.accountId,
+        type: tpl.type, amount: tpl.amount, description: tpl.description,
+        notes: tpl.notes, date: instanceDate, isRecurring: false, parentId: tpl.id,
+      },
+    })
   }
 }
 
@@ -362,6 +383,8 @@ export async function createSplitTransaction(req: AuthRequest, res: Response) {
 
 export async function updateTransaction(req: AuthRequest, res: Response) {
   const { id } = req.params
+  // editScope: 'only' (default) | 'future' | 'all'
+  const editScope = (req.body.editScope ?? 'only') as 'only' | 'future' | 'all'
   const data = transactionSchema.partial().parse(req.body)
 
   const transaction = await prisma.transaction.findFirst({ where: { id, userId: req.userId } })
@@ -372,19 +395,69 @@ export async function updateTransaction(req: AuthRequest, res: Response) {
     if (!category) return res.status(400).json({ error: 'Categoria inválida' })
   }
 
-  // Prepare tag update (replace all tags if provided)
   const tagUpdate = data.tags !== undefined
     ? { tags: { set: await upsertTags(data.tags ?? [], req.userId!) } }
     : {}
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { installments: _inst2, tags: _tags2, ...updateData } = data
+
+  // ── Handle recurring-instance edit scopes ────────────────────────────────────
+  if (transaction.parentId && !transaction.isRecurring && editScope !== 'only') {
+    const templateId = transaction.parentId
+
+    // Shared fields to push to the template (not date-specific)
+    const templatePatch = {
+      categoryId:     updateData.categoryId,
+      amount:         updateData.amount,
+      description:    updateData.description,
+      notes:          updateData.notes,
+      accountId:      updateData.accountId,
+      recurrenceType: updateData.recurrenceType,
+      recurrenceEnd:  updateData.recurrenceEnd != null
+        ? new Date(updateData.recurrenceEnd)
+        : (updateData.recurrenceEnd === null ? null : undefined),
+      paymentMethod:  updateData.paymentMethod,
+    }
+
+    if (editScope === 'future') {
+      // Update template + delete this and all future instances
+      await prisma.transaction.update({ where: { id: templateId }, data: templatePatch })
+      await prisma.transaction.deleteMany({
+        where: {
+          parentId: templateId,
+          date: { gte: transaction.date },
+          isRecurring: false,
+        },
+      })
+      return res.json({ editScope: 'future', templateId })
+    }
+
+    if (editScope === 'all') {
+      // Update template + update all existing instances + delete future ones to regenerate
+      await prisma.transaction.update({ where: { id: templateId }, data: templatePatch })
+      await prisma.transaction.updateMany({
+        where: { parentId: templateId, isRecurring: false },
+        data: {
+          categoryId:    updateData.categoryId,
+          amount:        updateData.amount,
+          description:   updateData.description,
+          notes:         updateData.notes ?? null,
+          accountId:     updateData.accountId ?? null,
+          paymentMethod: updateData.paymentMethod ?? null,
+        },
+      })
+      return res.json({ editScope: 'all', templateId })
+    }
+  }
+
+  // ── Default: update only this instance (or the template itself) ──────────────
   const updated = await prisma.transaction.update({
     where: { id },
     data: {
       ...updateData,
       date: data.date ? new Date(data.date) : undefined,
-      recurrenceEnd: data.recurrenceEnd ? new Date(data.recurrenceEnd) : null,
+      recurrenceEnd: data.recurrenceEnd != null ? new Date(data.recurrenceEnd) : null,
       ...tagUpdate,
     },
     include: TX_INCLUDE,
@@ -476,6 +549,40 @@ export async function deleteAttachment(req: AuthRequest, res: Response) {
 
   await prisma.transactionAttachment.delete({ where: { id: aid } })
   return res.status(204).send()
+}
+
+// ── Skip / unskip a recurring instance ────────────────────────────────────────
+
+export async function skipInstance(req: AuthRequest, res: Response) {
+  const { id } = req.params
+  const transaction = await prisma.transaction.findFirst({
+    where: { id, userId: req.userId, parentId: { not: null }, isRecurring: false },
+  })
+  if (!transaction) return res.status(404).json({ error: 'Instância não encontrada' })
+
+  const updated = await prisma.transaction.update({
+    where: { id },
+    data: { isSkipped: !transaction.isSkipped },
+    include: TX_INCLUDE,
+  })
+  return res.json(updated)
+}
+
+// ── Pause / resume a recurring template ───────────────────────────────────────
+
+export async function pauseTemplate(req: AuthRequest, res: Response) {
+  const { id } = req.params
+  const template = await prisma.transaction.findFirst({
+    where: { id, userId: req.userId, isRecurring: true },
+  })
+  if (!template) return res.status(404).json({ error: 'Template não encontrado' })
+
+  const updated = await prisma.transaction.update({
+    where: { id },
+    data: { isPaused: !template.isPaused },
+    include: TX_INCLUDE,
+  })
+  return res.json(updated)
 }
 
 // ── List tags (for autocomplete) ───────────────────────────────────────────────

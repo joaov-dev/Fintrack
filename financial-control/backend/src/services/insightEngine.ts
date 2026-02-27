@@ -106,6 +106,7 @@ export async function runInsightEngine(
   const fourMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 4, 1)
   const sevenDaysAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
   const sevenDaysFromNow = new Date(today.getTime() + 7 * 24 * 60 * 60 * 1000)
+  const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000)
 
   // ── Fetch all data in parallel ─────────────────────────────────────────────
   const [
@@ -125,7 +126,7 @@ export async function runInsightEngine(
   ] = await Promise.all([
     prisma.transaction.findMany({
       where: { userId, date: { gte: fourMonthsAgo }, transferId: null, isCardPayment: { not: true } },
-      select: { type: true, amount: true, date: true, isRecurring: true, categoryId: true },
+      select: { type: true, amount: true, date: true, description: true, isRecurring: true, categoryId: true },
     }),
     prisma.transaction.groupBy({
       by: ['categoryId'],
@@ -497,6 +498,39 @@ export async function runInsightEngine(
           validTo: endOfCurrentMonth,
         })
       }
+    }
+  }
+
+  // 11. NEW_SUBSCRIPTION — recurring EXPENSE first appeared in the last 30 days
+  {
+    // Build a set of normalized descriptions from recurring expenses BEFORE the 30-day window
+    const historicalRecurringDesc = new Set(
+      recentTxs
+        .filter((t) => t.isRecurring && t.type === 'EXPENSE' && new Date(t.date) < thirtyDaysAgo)
+        .map((t) => t.description.toLowerCase().trim()),
+    )
+
+    const seenNew = new Set<string>()
+    for (const tx of recentTxs) {
+      if (!tx.isRecurring || tx.type !== 'EXPENSE') continue
+      if (new Date(tx.date) < thirtyDaysAgo) continue
+      const key = tx.description.toLowerCase().trim()
+      if (!key || historicalRecurringDesc.has(key) || seenNew.has(key)) continue
+
+      seenNew.add(key)
+      const amount = Number(tx.amount)
+      candidates.push({
+        type: 'NEW_SUBSCRIPTION',
+        severity: 'INFO',
+        title: `Nova recorrência: ${tx.description}`,
+        message: `"${tx.description}" apareceu como despesa recorrente este mês — R$ ${amount.toFixed(2)}.`,
+        explanation: 'Transação marcada como recorrente sem histórico nos 3 meses anteriores. Pode ser uma nova assinatura ou serviço.',
+        suggestedAction: 'Verifique se este gasto foi intencional e se o valor está correto.',
+        cta: { label: 'Ver transações', route: '/transactions' },
+        dedupeKey: `NEW_SUBSCRIPTION:${key}:${currentMonthKey}`,
+        context: { description: tx.description, amount },
+        validTo: endOfCurrentMonth,
+      })
     }
   }
 

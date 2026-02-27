@@ -254,8 +254,12 @@ export default function FinancialHealthPage() {
                 title="Taxa de Poupança"
                 weight="30%"
                 pillar={data.pillars.savingsRate}
-                valueLabel={`${(data.pillars.savingsRate.value * 100).toFixed(1)}%`}
-                valueDescription="da renda economizada nos últ. 3 meses"
+                valueLabel={`${Math.max(0, Math.min(100, data.pillars.savingsRate.value * 100)).toFixed(1)}%`}
+                valueDescription={
+                  data.pillars.savingsRate.value < 0
+                    ? 'despesas superam a renda nos últ. 3 meses'
+                    : 'da renda economizada nos últ. 3 meses'
+                }
                 goal="Meta: poupar ≥ 20% da renda"
                 trendLabel={data.pillars.savingsRate.trend === 'up' ? 'Melhorou' : undefined}
               />
@@ -263,7 +267,7 @@ export default function FinancialHealthPage() {
                 title="Gastos Fixos"
                 weight="30%"
                 pillar={data.pillars.incomeCommitment}
-                valueLabel={`${(data.pillars.incomeCommitment.value * 100).toFixed(1)}%`}
+                valueLabel={`${Math.max(0, Math.min(100, data.pillars.incomeCommitment.value * 100)).toFixed(1)}%`}
                 valueDescription="da renda comprometida com recorrentes"
                 goal="Meta: manter abaixo de 50% da renda"
                 trendLabel={data.pillars.incomeCommitment.trend === 'up' ? 'Reduziu' : undefined}

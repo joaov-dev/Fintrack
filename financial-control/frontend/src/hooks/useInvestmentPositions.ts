@@ -7,10 +7,10 @@ export function useInvestmentPositions(accountId: string | null) {
   const [isLoading, setIsLoading] = useState(false)
 
   const fetch = useCallback(async () => {
-    if (!accountId) { setPositions([]); return }
     setIsLoading(true)
     try {
-      const { data } = await api.get('/investment-positions', { params: { accountId } })
+      const params = accountId ? { accountId } : undefined
+      const { data } = await api.get('/investment-positions', { params })
       setPositions(data)
     } finally {
       setIsLoading(false)

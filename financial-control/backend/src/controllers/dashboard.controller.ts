@@ -78,16 +78,22 @@ export async function getSummary(req: AuthRequest, res: Response) {
   // Accounts with real-time balances
   const accounts = await prisma.account.findMany({
     where: { userId: req.userId },
-    include: { transactions: { select: { type: true, amount: true } } },
+    include: {
+      transactions: { select: { type: true, amount: true } },
+      investmentPositions: { select: { currentValue: true } },
+    },
     orderBy: { createdAt: 'asc' },
   })
 
   const accountsWithBalance = accounts.map((acc) => {
-    const balance = calcAccountBalance(
-      toNumber(acc.initialBalance),
-      acc.transactions.map((t) => ({ type: t.type, amount: toNumber(t.amount) })),
-    )
-    const { transactions: _, ...rest } = acc
+    // Investment accounts: balance = market value of positions
+    const balance = acc.type === 'INVESTMENT'
+      ? acc.investmentPositions.reduce((s, p) => s + toNumber(p.currentValue), 0)
+      : calcAccountBalance(
+          toNumber(acc.initialBalance),
+          acc.transactions.map((t) => ({ type: t.type, amount: toNumber(t.amount) })),
+        )
+    const { transactions: _, investmentPositions: __, ...rest } = acc
     return { ...rest, balance }
   })
 

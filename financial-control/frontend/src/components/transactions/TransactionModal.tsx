@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Loader2, Repeat2, Tag, Plus, X, Paperclip, Scissors, Trash2 } from 'lucide-react'
+import { Loader2, Repeat2, Tag, Plus, X, Paperclip, Scissors, Trash2, AlertCircle } from 'lucide-react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog'
@@ -65,6 +65,12 @@ export function TransactionModal({ open, onClose, onSave, transaction, categorie
   const [pendingAttachments, setPendingAttachments] = useState<{ filename: string; mimeType: string; dataUrl: string }[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Edit scope (when editing a recurring instance)
+  const [editScope, setEditScope] = useState<'only' | 'future' | 'all'>('only')
+
+  // Is this a recurring instance (not the template)?
+  const isRecurringInstance = !!(transaction?.parentId && !transaction.isRecurring)
+
   // ── Reset state when modal opens/closes ───────────────────────────────────
 
   useEffect(() => {
@@ -72,6 +78,7 @@ export function TransactionModal({ open, onClose, onSave, transaction, categorie
     setRuleSuggestion(null)
     setTagInput('')
     setIsSplit(false)
+    setEditScope('only')
     setSplitParts([
       { categoryId: '', amount: '', description: '' },
       { categoryId: '', amount: '', description: '' },
@@ -217,6 +224,8 @@ export function TransactionModal({ open, onClose, onSave, transaction, categorie
           recurrenceEnd:   form.isRecurring && form.recurrenceEnd
             ? new Date(form.recurrenceEnd + 'T23:59:59').toISOString()
             : null,
+          // Pass editScope for recurring instances
+          ...(isRecurringInstance ? { editScope } : {}),
         })
         if (pendingAttachments.length > 0 && transaction?.id) {
           await uploadPendingAttachments(transaction.id)
@@ -549,6 +558,35 @@ export function TransactionModal({ open, onClose, onSave, transaction, categorie
               />
             </div>
           </div>
+
+          {/* Edit scope — only shown when editing a recurring instance */}
+          {isRecurringInstance && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3 space-y-2">
+              <p className="text-xs font-medium text-amber-800 flex items-center gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5" />
+                Esta é uma ocorrência recorrente. O que deseja alterar?
+              </p>
+              <div className="flex flex-col gap-1.5">
+                {([
+                  { value: 'only',   label: 'Apenas esta ocorrência' },
+                  { value: 'future', label: 'Esta e as próximas' },
+                  { value: 'all',    label: 'Todas as ocorrências' },
+                ] as const).map(({ value, label }) => (
+                  <label key={value} className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="editScope"
+                      value={value}
+                      checked={editScope === value}
+                      onChange={() => setEditScope(value)}
+                      className="accent-primary"
+                    />
+                    <span className="text-xs text-amber-900">{label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>

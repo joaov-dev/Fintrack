@@ -40,8 +40,10 @@ model User {
   transactions           Transaction[]
   accounts               Account[]
   budgets                Budget[]
-  investmentPositions    InvestmentPosition[]
-  liabilities            Liability[]
+  investmentPositions         InvestmentPosition[]
+  investmentMovements         InvestmentMovement[]
+  investmentAllocationTargets InvestmentAllocationTarget[]
+  liabilities                 Liability[]
   goals                  Goal[]
   creditCards            CreditCard[]
   cardStatements         CardStatement[]
@@ -152,6 +154,8 @@ model Transaction {
   installmentPlanId String?
   installmentNumber Int?
   splitId           String?
+  isPaused          Boolean         @default(false)
+  isSkipped         Boolean         @default(false)
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
@@ -184,11 +188,44 @@ model InvestmentPosition {
   createdAt    DateTime               @default(now())
   updatedAt    DateTime               @updatedAt
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  account      Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account      Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
   transactions Transaction[]
+  movements    InvestmentMovement[]
 
   @@map("investment_positions")
+}
+
+model InvestmentMovement {
+  id          String                 @id @default(cuid())
+  positionId  String
+  userId      String
+  type        InvestmentMovementType
+  amount      Decimal                @db.Decimal(12, 2)
+  quantity    Decimal?               @db.Decimal(15, 6)
+  unitPrice   Decimal?               @db.Decimal(12, 6)
+  date        DateTime
+  description String?
+  createdAt   DateTime               @default(now())
+
+  position InvestmentPosition @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  user     User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([positionId])
+  @@index([userId])
+  @@map("investment_movements")
+}
+
+model InvestmentAllocationTarget {
+  id        String                 @id @default(cuid())
+  userId    String
+  type      InvestmentPositionType
+  targetPct Decimal                @db.Decimal(5, 2)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+  @@map("investment_allocation_targets")
 }
 
 model CreditCard {
@@ -273,6 +310,8 @@ enum RecurrenceType {
   WEEKLY
   MONTHLY
   YEARLY
+  LAST_DAY      // último dia do mês
+  BUSINESS_DAYS // primeiro dia útil do mês
 }
 
 enum PaymentMethod {
@@ -297,6 +336,16 @@ enum InvestmentPositionType {
   REAL_ESTATE
   CRYPTO
   OTHER
+}
+
+enum InvestmentMovementType {
+  CONTRIBUTION  // Aporte
+  WITHDRAWAL    // Resgate
+  DIVIDEND      // Dividendo
+  JCP           // Juros sobre Capital Próprio
+  INTEREST      // Rendimento / Cupom
+  BONUS         // Bonificação
+  SPLIT         // Desdobramento
 }
 
 enum LiabilityType {

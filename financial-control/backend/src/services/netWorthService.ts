@@ -70,7 +70,10 @@ export async function getCurrentNetWorth(
   const [accounts, liabilities, ccStatements] = await Promise.all([
     prisma.account.findMany({
       where: { userId },
-      include: { transactions: { select: { type: true, amount: true } } },
+      include: {
+        transactions: { select: { type: true, amount: true } },
+        investmentPositions: { select: { currentValue: true } },
+      },
     }),
     prisma.liability.findMany({
       where: { userId },
@@ -85,10 +88,13 @@ export async function getCurrentNetWorth(
   const byAccountType: Record<string, number> = {}
   let totalAssets = 0
   for (const acc of accounts) {
-    const balance = calcAccountBalance(
-      toNumber(acc.initialBalance),
-      acc.transactions.map((t) => ({ type: t.type, amount: toNumber(t.amount) })),
-    )
+    // Investment accounts: use market value of positions
+    const balance = acc.type === 'INVESTMENT'
+      ? acc.investmentPositions.reduce((s, p) => s + toNumber(p.currentValue), 0)
+      : calcAccountBalance(
+          toNumber(acc.initialBalance),
+          acc.transactions.map((t) => ({ type: t.type, amount: toNumber(t.amount) })),
+        )
     totalAssets += balance
     byAccountType[acc.type] = (byAccountType[acc.type] ?? 0) + balance
   }

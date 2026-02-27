@@ -20,15 +20,21 @@ export async function listAccounts(req: AuthRequest, res: Response) {
   const accounts = await prisma.account.findMany({
     where: { userId: req.userId },
     orderBy: { createdAt: 'asc' },
-    include: { transactions: { select: { type: true, amount: true } } },
+    include: {
+      transactions: { select: { type: true, amount: true } },
+      investmentPositions: { select: { currentValue: true } },
+    },
   })
 
   const result = accounts.map((acc) => {
-    const balance = calcAccountBalance(
-      toNumber(acc.initialBalance),
-      acc.transactions.map((t) => ({ type: t.type, amount: toNumber(t.amount) })),
-    )
-    const { transactions: _, ...rest } = acc
+    // Investment accounts: balance = market value of positions, not transaction ledger
+    const balance = acc.type === 'INVESTMENT'
+      ? acc.investmentPositions.reduce((s, p) => s + toNumber(p.currentValue), 0)
+      : calcAccountBalance(
+          toNumber(acc.initialBalance),
+          acc.transactions.map((t) => ({ type: t.type, amount: toNumber(t.amount) })),
+        )
+    const { transactions: _, investmentPositions: __, ...rest } = acc
     return { ...rest, balance }
   })
 

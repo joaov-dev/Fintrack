@@ -3,8 +3,9 @@ export type TransactionType = 'INCOME' | 'EXPENSE'
 export type PaymentMethod = 'CASH' | 'DEBIT' | 'PIX' | 'CREDIT_CARD' | 'TRANSFER'
 export type CardStatementStatus = 'OPEN' | 'CLOSED' | 'PAID' | 'OVERDUE'
 export type AccountType = 'CHECKING' | 'SAVINGS' | 'CREDIT' | 'INVESTMENT' | 'CASH'
-export type RecurrenceType = 'WEEKLY' | 'MONTHLY' | 'YEARLY'
+export type RecurrenceType = 'WEEKLY' | 'MONTHLY' | 'YEARLY' | 'LAST_DAY' | 'BUSINESS_DAYS'
 export type InvestmentPositionType = 'STOCK' | 'FUND' | 'FIXED_INCOME' | 'REAL_ESTATE' | 'CRYPTO' | 'OTHER'
+export type InvestmentMovementType = 'CONTRIBUTION' | 'WITHDRAWAL' | 'DIVIDEND' | 'JCP' | 'INTEREST' | 'BONUS' | 'SPLIT'
 export type LiabilityType = 'LOAN' | 'FINANCING' | 'CREDIT_CARD' | 'OTHER'
 export type DiscountType = 'PERCENTAGE' | 'FIXED'
 
@@ -130,11 +131,34 @@ export interface Transaction {
   installmentPlanId?: string | null
   installmentNumber?: number | null
   splitId?: string | null
+  isPaused?: boolean
+  isSkipped?: boolean
   createdAt: string
   category: Category
   account: Account | null
   tags: Tag[]
   attachments: Pick<TransactionAttachment, 'id' | 'filename' | 'mimeType' | 'size'>[]
+}
+
+export interface InvestmentMovement {
+  id: string
+  positionId: string
+  userId: string
+  type: InvestmentMovementType
+  amount: number
+  quantity: number | null
+  unitPrice: number | null
+  date: string
+  description: string | null
+  createdAt: string
+  position?: { name: string; ticker: string | null; type: InvestmentPositionType; accountId?: string }
+}
+
+export interface AllocationTarget {
+  id: string
+  userId: string
+  type: InvestmentPositionType
+  targetPct: number
 }
 
 export interface InvestmentPosition {
@@ -148,8 +172,20 @@ export interface InvestmentPosition {
   avgPrice: number | null
   currentValue: number
   notes: string | null
+  // Legacy
   totalYields: number
   transactions: Pick<Transaction, 'id' | 'amount' | 'date' | 'description' | 'type'>[]
+  // New
+  movements: InvestmentMovement[]
+  totalContributions: number
+  totalWithdrawals: number
+  totalIncome: number
+  costBasis: number
+  unrealizedGain: number
+  unrealizedGainPct: number
+  realizedGain: number
+  totalPnL: number
+  totalReturnPct: number
   createdAt: string
   updatedAt: string
 }
@@ -291,9 +327,11 @@ export const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
 }
 
 export const RECURRENCE_TYPE_LABELS: Record<RecurrenceType, string> = {
-  WEEKLY: 'Semanal',
-  MONTHLY: 'Mensal',
-  YEARLY: 'Anual',
+  WEEKLY:        'Semanal',
+  MONTHLY:       'Mensal',
+  YEARLY:        'Anual',
+  LAST_DAY:      'Último dia do mês',
+  BUSINESS_DAYS: '1º dia útil do mês',
 }
 
 export const INVESTMENT_POSITION_TYPE_LABELS: Record<InvestmentPositionType, string> = {
@@ -312,6 +350,36 @@ export const INVESTMENT_POSITION_TYPE_COLORS: Record<InvestmentPositionType, str
   REAL_ESTATE: 'bg-amber-100 text-amber-700',
   CRYPTO: 'bg-orange-100 text-orange-700',
   OTHER: 'bg-slate-100 text-slate-600',
+}
+
+// Hex colors for charts (recharts)
+export const INVESTMENT_TYPE_HEX: Record<InvestmentPositionType, string> = {
+  STOCK:        '#7c3aed',
+  FUND:         '#2563eb',
+  FIXED_INCOME: '#059669',
+  REAL_ESTATE:  '#d97706',
+  CRYPTO:       '#ea580c',
+  OTHER:        '#64748b',
+}
+
+export const INVESTMENT_MOVEMENT_TYPE_LABELS: Record<InvestmentMovementType, string> = {
+  CONTRIBUTION: 'Aporte',
+  WITHDRAWAL:   'Resgate',
+  DIVIDEND:     'Dividendo',
+  JCP:          'JCP',
+  INTEREST:     'Rendimento',
+  BONUS:        'Bonificação',
+  SPLIT:        'Desdobramento',
+}
+
+export const INVESTMENT_MOVEMENT_TYPE_COLORS: Record<InvestmentMovementType, string> = {
+  CONTRIBUTION: 'bg-blue-100 text-blue-700',
+  WITHDRAWAL:   'bg-rose-100 text-rose-700',
+  DIVIDEND:     'bg-emerald-100 text-emerald-700',
+  JCP:          'bg-teal-100 text-teal-700',
+  INTEREST:     'bg-green-100 text-green-700',
+  BONUS:        'bg-purple-100 text-purple-700',
+  SPLIT:        'bg-amber-100 text-amber-700',
 }
 
 export const LIABILITY_TYPE_LABELS: Record<LiabilityType, string> = {
@@ -476,6 +544,31 @@ export interface ProjectionItem {
   amount: number
 }
 
+export interface ForecastPremise {
+  label: string
+  included: boolean
+}
+
+export interface ForecastScenario {
+  id: 'optimistic' | 'base' | 'conservative'
+  name: string
+  description: string
+  projectedIncome: number
+  projectedExpense: number
+  expectedBalance: number
+  premises: ForecastPremise[]
+}
+
+export interface AccountProjection {
+  accountId: string
+  accountName: string
+  accountColor: string
+  currentBalance: number
+  futureInflow: number
+  futureOutflow: number
+  projectedBalance: number
+}
+
 export interface MonthlyProjection {
   expectedBalance: number
   projectedIncome: number
@@ -484,6 +577,12 @@ export interface MonthlyProjection {
   variableExpenses: number
   dailyVariableAvg: number
   daysRemaining: number
+  // Scenario fields
+  confirmedIncome: number
+  confirmedExpense: number
+  estimatedVariableExpense: number
+  scenarios: ForecastScenario[]
+  accountProjections: AccountProjection[]
   calendarDays: CalendarDay[]
   incomeBreakdown: {
     realizedItems: ProjectionItem[]

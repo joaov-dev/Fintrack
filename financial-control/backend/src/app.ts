@@ -17,6 +17,8 @@ import { goalsRoutes } from './routes/goals.routes'
 import { creditCardRoutes } from './routes/credit-cards.routes'
 import { microGoalsRoutes } from './routes/micro-goals.routes'
 import { categorizationRuleRoutes } from './routes/categorizationRule.routes'
+import { investmentMovementRoutes } from './routes/investment-movement.routes'
+import { allocationTargetRoutes } from './routes/allocation-target.routes'
 import { errorHandler } from './middlewares/error.middleware'
 import { authLimiter } from './middlewares/rateLimiter'
 
@@ -45,7 +47,9 @@ app.use('/api/import', importRoutes)
 app.use('/api/goals', goalsRoutes)
 app.use('/api/credit-cards', creditCardRoutes)
 app.use('/api/micro-goals', microGoalsRoutes)
-app.use('/api/categorization-rules', categorizationRuleRoutes)
+app.use('/api/categorization-rules',           categorizationRuleRoutes)
+app.use('/api/investment-movements',           investmentMovementRoutes)
+app.use('/api/investment-allocation-targets',  allocationTargetRoutes)
 
 app.use(errorHandler)
 

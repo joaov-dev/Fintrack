@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import {
   Repeat2, ArrowUpRight, ArrowDownRight, Pencil, Trash2, Loader2, Plus, CalendarClock,
+  PauseCircle, PlayCircle,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -14,11 +15,14 @@ import { useToast } from '@/hooks/use-toast'
 import { Transaction, RECURRENCE_TYPE_LABELS } from '@/types'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { cn } from '@/lib/utils'
+import { api } from '@/services/api'
 
 const FREQUENCY_COLORS: Record<string, string> = {
-  WEEKLY:  'bg-violet-100 text-violet-700',
-  MONTHLY: 'bg-blue-100 text-blue-700',
-  YEARLY:  'bg-amber-100 text-amber-700',
+  WEEKLY:        'bg-violet-100 text-violet-700',
+  MONTHLY:       'bg-blue-100 text-blue-700',
+  YEARLY:        'bg-amber-100 text-amber-700',
+  LAST_DAY:      'bg-orange-100 text-orange-700',
+  BUSINESS_DAYS: 'bg-teal-100 text-teal-700',
 }
 
 type TypeFilter = 'ALL' | 'INCOME' | 'EXPENSE'
@@ -28,7 +32,7 @@ export default function RecurringPage() {
   const { toast } = useToast()
   const { categories } = useCategories()
   const { accounts } = useAccounts()
-  const { transactions: templates, isLoading, remove, update } = useTransactions({ isRecurring: true })
+  const { transactions: templates, isLoading, remove, update, refetch } = useTransactions({ isRecurring: true })
 
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Transaction | null>(null)
@@ -82,6 +86,16 @@ export default function RecurringPage() {
       toast({ title: 'Recorrência atualizada' })
     } catch {
       toast({ title: 'Erro ao salvar', variant: 'destructive' })
+    }
+  }
+
+  const handlePause = async (t: Transaction) => {
+    try {
+      await api.patch(`/transactions/${t.id}/pause`)
+      await refetch()
+      toast({ title: t.isPaused ? 'Recorrência retomada' : 'Recorrência pausada' })
+    } catch {
+      toast({ title: 'Erro ao pausar/retomar', variant: 'destructive' })
     }
   }
 
@@ -196,17 +210,17 @@ export default function RecurringPage() {
             const isIncome = t.type === 'INCOME'
             const account = accounts.find((a) => a.id === t.accountId)
             return (
-              <Card key={t.id} className="hover:shadow-md transition-shadow">
+              <Card key={t.id} className={cn('hover:shadow-md transition-shadow', t.isPaused && 'opacity-60')}>
                 <CardContent className="pt-5 pb-4 px-5 flex flex-col gap-3">
                   {/* Top row: icon + description + amount */}
                   <div className="flex items-start gap-3">
                     <div className={cn(
                       'w-10 h-10 rounded-xl flex items-center justify-center shrink-0',
-                      isIncome ? 'bg-emerald-100' : 'bg-rose-100',
+                      t.isPaused ? 'bg-slate-100' : isIncome ? 'bg-emerald-100' : 'bg-rose-100',
                     )}>
                       {isIncome
-                        ? <ArrowUpRight className="w-5 h-5 text-emerald-600" />
-                        : <ArrowDownRight className="w-5 h-5 text-rose-500" />}
+                        ? <ArrowUpRight className={cn('w-5 h-5', t.isPaused ? 'text-slate-400' : 'text-emerald-600')} />
+                        : <ArrowDownRight className={cn('w-5 h-5', t.isPaused ? 'text-slate-400' : 'text-rose-500')} />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-slate-900 dark:text-slate-50 truncate">{t.description}</p>
@@ -225,6 +239,12 @@ export default function RecurringPage() {
 
                   {/* Badges row */}
                   <div className="flex flex-wrap items-center gap-2">
+                    {t.isPaused && (
+                      <Badge className="text-xs font-medium border-0 bg-slate-100 text-slate-500 flex items-center gap-1">
+                        <PauseCircle className="w-3 h-3" />
+                        Pausada
+                      </Badge>
+                    )}
                     {t.recurrenceType && (
                       <Badge className={cn(
                         'text-xs font-medium border-0 flex items-center gap-1',
@@ -262,6 +282,22 @@ export default function RecurringPage() {
                     >
                       <Pencil className="w-3.5 h-3.5" />
                       Editar
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      title={t.isPaused ? 'Retomar' : 'Pausar'}
+                      className={cn(
+                        'h-8 text-xs',
+                        t.isPaused
+                          ? 'text-emerald-600 hover:bg-emerald-50 hover:border-emerald-200'
+                          : 'text-slate-500 hover:bg-slate-50',
+                      )}
+                      onClick={() => handlePause(t)}
+                    >
+                      {t.isPaused
+                        ? <PlayCircle className="w-3.5 h-3.5" />
+                        : <PauseCircle className="w-3.5 h-3.5" />}
                     </Button>
                     <Button
                       variant="outline"

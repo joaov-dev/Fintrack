@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import {
   Plus, Search, ArrowUpRight, ArrowDownRight, ArrowLeftRight, Pencil, Trash2, Loader2,
-  ChevronLeft, ChevronRight, Upload, CreditCard, Scissors, ChevronDown,
+  ChevronLeft, ChevronRight, Upload, CreditCard, Scissors, ChevronDown, SkipForward,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -132,6 +132,16 @@ export default function TransactionsPage() {
       }
     } catch {
       toast({ title: 'Erro ao salvar transação', variant: 'destructive' })
+    }
+  }
+
+  const handleSkip = async (id: string, isSkipped: boolean) => {
+    try {
+      await api.patch(`/transactions/${id}/skip`)
+      await refetch()
+      toast({ title: isSkipped ? 'Ocorrência restaurada' : 'Ocorrência pulada' })
+    } catch {
+      toast({ title: 'Erro ao pular ocorrência', variant: 'destructive' })
     }
   }
 
@@ -344,7 +354,10 @@ export default function TransactionsPage() {
                 // ── Regular transaction ──────────────────────────────────
                 const t = item.data
                 return (
-                  <div key={t.id} className="flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50/80 transition-colors group">
+                  <div key={t.id} className={cn(
+                    'flex items-center gap-3 px-4 py-3.5 hover:bg-slate-50/80 transition-colors group',
+                    t.isSkipped && 'opacity-40 line-through',
+                  )}>
                     <div className={cn(
                       'w-9 h-9 rounded-lg flex items-center justify-center shrink-0',
                       t.transferId ? 'bg-violet-100'
@@ -416,6 +429,22 @@ export default function TransactionsPage() {
                       </span>
 
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {/* Skip button — only for recurring instances */}
+                        {t.parentId && !t.isRecurring && (
+                          <Button
+                            variant="ghost" size="icon"
+                            title={t.isSkipped ? 'Restaurar ocorrência' : 'Pular esta ocorrência'}
+                            className={cn(
+                              'h-7 w-7',
+                              t.isSkipped
+                                ? 'text-primary hover:text-primary'
+                                : 'text-slate-400 hover:text-amber-600',
+                            )}
+                            onClick={() => handleSkip(t.id, !!t.isSkipped)}
+                          >
+                            <SkipForward className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
                         <Button
                           variant="ghost" size="icon"
                           className="h-7 w-7 text-slate-400 hover:text-primary"

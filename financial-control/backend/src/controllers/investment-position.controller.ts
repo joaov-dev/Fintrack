@@ -8,6 +8,10 @@ function toNumber(d: Decimal | null | undefined) {
   return d ? Number(d) : 0
 }
 
+function toNumberOrNull(d: Decimal | null | undefined) {
+  return d ? Number(d) : null
+}
+
 const positionSchema = z.object({
   accountId: z.string().cuid(),
   name: z.string().min(1),
@@ -25,6 +29,53 @@ const yieldSchema = z.object({
   description: z.string().optional(),
 })
 
+/** Compute derived investment metrics from a position's movements */
+function computeMetrics(
+  currentValue: number,
+  quantity: number | null,
+  avgPrice: number | null,
+  movements: { type: string; amount: number | Decimal; quantity: number | Decimal | null }[],
+) {
+  let totalContributions = 0
+  let totalWithdrawals = 0
+  let totalIncome = 0
+
+  for (const m of movements) {
+    const amt = Number(m.amount)
+    if (m.type === 'CONTRIBUTION') totalContributions += amt
+    else if (m.type === 'WITHDRAWAL') totalWithdrawals += amt
+    else if (['DIVIDEND', 'JCP', 'INTEREST'].includes(m.type)) totalIncome += amt
+  }
+
+  // Cost basis: prefer quantity × avgPrice when both are available
+  const costBasis =
+    quantity != null && avgPrice != null && quantity > 0
+      ? quantity * avgPrice
+      : totalContributions - totalWithdrawals
+
+  const unrealizedGain = currentValue - (costBasis > 0 ? costBasis : 0)
+  const unrealizedGainPct = costBasis > 0 ? (unrealizedGain / costBasis) * 100 : 0
+
+  // Total P&L = current + what was taken out + income - what was put in
+  const totalPnL = currentValue + totalWithdrawals + totalIncome - totalContributions
+  const totalReturnPct = totalContributions > 0 ? (totalPnL / totalContributions) * 100 : 0
+
+  // Realized gain is imprecise without lot tracking; approximate as total P&L - unrealized
+  const realizedGain = totalPnL - unrealizedGain
+
+  return {
+    totalContributions,
+    totalWithdrawals,
+    totalIncome,
+    costBasis: costBasis > 0 ? costBasis : 0,
+    unrealizedGain,
+    unrealizedGainPct,
+    realizedGain,
+    totalPnL,
+    totalReturnPct,
+  }
+}
+
 export async function listPositions(req: AuthRequest, res: Response) {
   const { accountId } = req.query
 
@@ -39,18 +90,38 @@ export async function listPositions(req: AuthRequest, res: Response) {
         select: { id: true, amount: true, date: true, description: true, type: true },
         orderBy: { date: 'desc' },
       },
+      movements: {
+        orderBy: { date: 'desc' },
+      },
     },
   })
 
-  const result = positions.map((p) => ({
-    ...p,
-    currentValue: toNumber(p.currentValue),
-    quantity: p.quantity ? toNumber(p.quantity) : null,
-    avgPrice: p.avgPrice ? toNumber(p.avgPrice) : null,
-    totalYields: p.transactions
-      .filter((t) => t.type === 'INCOME')
-      .reduce((sum, t) => sum + toNumber(t.amount), 0),
-  }))
+  const result = positions.map((p) => {
+    const cv = toNumber(p.currentValue)
+    const qty = toNumberOrNull(p.quantity)
+    const avg = toNumberOrNull(p.avgPrice)
+    const metrics = computeMetrics(cv, qty, avg, p.movements)
+
+    return {
+      ...p,
+      currentValue: cv,
+      quantity: qty,
+      avgPrice: avg,
+      // Legacy field kept for backward compat
+      totalYields: p.transactions
+        .filter((t) => t.type === 'INCOME')
+        .reduce((sum, t) => sum + toNumber(t.amount), 0),
+      movements: p.movements.map((m) => ({
+        ...m,
+        amount: Number(m.amount),
+        quantity: m.quantity ? Number(m.quantity) : null,
+        unitPrice: m.unitPrice ? Number(m.unitPrice) : null,
+        date: m.date.toISOString(),
+        createdAt: m.createdAt.toISOString(),
+      })),
+      ...metrics,
+    }
+  })
 
   return res.json(result)
 }
@@ -70,10 +141,20 @@ export async function createPosition(req: AuthRequest, res: Response) {
   return res.status(201).json({
     ...position,
     currentValue: toNumber(position.currentValue),
-    quantity: position.quantity ? toNumber(position.quantity) : null,
-    avgPrice: position.avgPrice ? toNumber(position.avgPrice) : null,
+    quantity: toNumberOrNull(position.quantity),
+    avgPrice: toNumberOrNull(position.avgPrice),
     totalYields: 0,
     transactions: [],
+    movements: [],
+    totalContributions: 0,
+    totalWithdrawals: 0,
+    totalIncome: 0,
+    costBasis: 0,
+    unrealizedGain: 0,
+    unrealizedGainPct: 0,
+    realizedGain: 0,
+    totalPnL: 0,
+    totalReturnPct: 0,
   })
 }
 
@@ -94,8 +175,8 @@ export async function updatePosition(req: AuthRequest, res: Response) {
   return res.json({
     ...updated,
     currentValue: toNumber(updated.currentValue),
-    quantity: updated.quantity ? toNumber(updated.quantity) : null,
-    avgPrice: updated.avgPrice ? toNumber(updated.avgPrice) : null,
+    quantity: toNumberOrNull(updated.quantity),
+    avgPrice: toNumberOrNull(updated.avgPrice),
   })
 }
 
@@ -111,6 +192,7 @@ export async function deletePosition(req: AuthRequest, res: Response) {
   return res.status(204).send()
 }
 
+// Legacy endpoint — kept for backward compatibility
 export async function addYield(req: AuthRequest, res: Response) {
   const { id } = req.params
   const data = yieldSchema.parse(req.body)
@@ -152,8 +234,8 @@ export async function addYield(req: AuthRequest, res: Response) {
     position: {
       ...updatedPosition,
       currentValue: toNumber(updatedPosition.currentValue),
-      quantity: updatedPosition.quantity ? toNumber(updatedPosition.quantity) : null,
-      avgPrice: updatedPosition.avgPrice ? toNumber(updatedPosition.avgPrice) : null,
+      quantity: toNumberOrNull(updatedPosition.quantity),
+      avgPrice: toNumberOrNull(updatedPosition.avgPrice),
     },
     transaction,
   })

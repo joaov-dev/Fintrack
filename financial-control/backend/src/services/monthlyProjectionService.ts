@@ -22,6 +22,31 @@ export interface ProjectionItem {
   amount: number
 }
 
+export interface ForecastPremise {
+  label: string
+  included: boolean
+}
+
+export interface ForecastScenario {
+  id: 'optimistic' | 'base' | 'conservative'
+  name: string
+  description: string
+  projectedIncome: number
+  projectedExpense: number
+  expectedBalance: number
+  premises: ForecastPremise[]
+}
+
+export interface AccountProjection {
+  accountId: string
+  accountName: string
+  accountColor: string
+  currentBalance: number
+  futureInflow: number
+  futureOutflow: number
+  projectedBalance: number
+}
+
 export interface MonthlyProjection {
   expectedBalance: number
   projectedIncome: number
@@ -30,6 +55,12 @@ export interface MonthlyProjection {
   variableExpenses: number
   dailyVariableAvg: number
   daysRemaining: number
+  // New scenario fields
+  confirmedIncome: number
+  confirmedExpense: number
+  estimatedVariableExpense: number
+  scenarios: ForecastScenario[]
+  accountProjections: AccountProjection[]
   calendarDays: CalendarDay[]
   // Breakdown for info modals
   incomeBreakdown: {
@@ -75,7 +106,7 @@ export async function getMonthlyProjection(
   const daysRemaining = totalDays - todayDay
   const daysPassedSafe = Math.max(todayDay, 1)
 
-  const [realizedTxs, futureRecurringTxs, allMonthTxs, allActiveLiabilities, ccDueStatements] = await Promise.all([
+  const [realizedTxs, futureRecurringTxs, allMonthTxs, allActiveLiabilities, ccDueStatements, accounts, txAggregates] = await Promise.all([
     // 1. Transactions realized up to today (excl. transfers)
     prisma.transaction.findMany({
       where: {
@@ -93,7 +124,7 @@ export async function getMonthlyProjection(
         transferId: null,
         date: { gt: today, lte: endOfMonth },
       },
-      select: { type: true, amount: true, description: true, date: true },
+      select: { type: true, amount: true, description: true, date: true, accountId: true },
     }),
     // 3. All transactions this month for calendar (realized + future instances already created)
     prisma.transaction.findMany({
@@ -125,6 +156,17 @@ export async function getMonthlyProjection(
         totalPaid: true,
         card: { select: { name: true } },
       },
+    }),
+    // 6. Accounts for per-account projection (excl. credit cards and investment accounts)
+    prisma.account.findMany({
+      where: { userId, type: { notIn: ['CREDIT', 'INVESTMENT'] } },
+      select: { id: true, name: true, color: true, initialBalance: true },
+    }),
+    // 7. Transaction aggregates per account to compute running balance
+    prisma.transaction.groupBy({
+      by: ['accountId', 'type'],
+      where: { userId, accountId: { not: null }, transferId: null },
+      _sum: { amount: true },
     }),
   ])
 
@@ -169,10 +211,8 @@ export async function getMonthlyProjection(
   const liabilityItems: ProjectionItem[] = allActiveLiabilities
     .map((l) => {
       if (l.installments && l.installments > 0) {
-        // Has installments → monthly cost = currentBalance / installments
         return { label: l.name, amount: Number(l.currentBalance) / l.installments }
       }
-      // No installments but due this month → full current balance
       if (l.dueDate) {
         const d = new Date(l.dueDate)
         if (d.getFullYear() === year && d.getMonth() === month) {
@@ -206,6 +246,98 @@ export async function getMonthlyProjection(
 
   const expectedBalance = projectedIncome - projectedExpense
 
+  // ── New: confirmed / estimated / scenarios ────────────────────────────────
+  const confirmedIncome = projectedIncome
+  const confirmedExpense = projectedExpense
+  const estimatedVariableExpense = Math.round(dailyVariableAvg * daysRemaining * 100) / 100
+
+  const scenarios: ForecastScenario[] = [
+    {
+      id: 'optimistic',
+      name: 'Otimista',
+      description: 'Somente comprometidos, sem variáveis',
+      projectedIncome: confirmedIncome,
+      projectedExpense: confirmedExpense,
+      expectedBalance: confirmedIncome - confirmedExpense,
+      premises: [
+        { label: 'Receitas realizadas no mês', included: true },
+        { label: 'Receitas recorrentes futuras', included: true },
+        { label: 'Despesas fixas e recorrentes', included: true },
+        { label: 'Parcelas de passivos', included: true },
+        { label: 'Faturas de cartão', included: true },
+        { label: 'Estimativa de gastos variáveis', included: false },
+      ],
+    },
+    {
+      id: 'base',
+      name: 'Realista',
+      description: 'Comprometido + média diária de variáveis',
+      projectedIncome: confirmedIncome,
+      projectedExpense: confirmedExpense + estimatedVariableExpense,
+      expectedBalance: confirmedIncome - (confirmedExpense + estimatedVariableExpense),
+      premises: [
+        { label: 'Receitas realizadas no mês', included: true },
+        { label: 'Receitas recorrentes futuras', included: true },
+        { label: 'Despesas fixas e recorrentes', included: true },
+        { label: 'Parcelas de passivos', included: true },
+        { label: 'Faturas de cartão', included: true },
+        { label: `Variáveis: 100% da média diária × ${daysRemaining} dias`, included: true },
+      ],
+    },
+    {
+      id: 'conservative',
+      name: 'Pessimista',
+      description: 'Só receitas realizadas + 130% de variáveis',
+      projectedIncome: realizedIncome,
+      projectedExpense: confirmedExpense + Math.round(1.3 * estimatedVariableExpense * 100) / 100,
+      expectedBalance: realizedIncome - (confirmedExpense + Math.round(1.3 * estimatedVariableExpense * 100) / 100),
+      premises: [
+        { label: 'Receitas recorrentes futuras excluídas', included: false },
+        { label: 'Somente receitas já realizadas', included: true },
+        { label: 'Despesas fixas e recorrentes', included: true },
+        { label: 'Parcelas de passivos', included: true },
+        { label: 'Faturas de cartão', included: true },
+        { label: `Variáveis: 130% da média diária × ${daysRemaining} dias`, included: true },
+      ],
+    },
+  ]
+
+  // ── Per-account projection ────────────────────────────────────────────────
+  // Compute running balance: initialBalance + sum(INCOME) - sum(EXPENSE)
+  const balanceMap = new Map<string, number>()
+  for (const acc of accounts) {
+    balanceMap.set(acc.id, Number(acc.initialBalance))
+  }
+  for (const agg of txAggregates) {
+    if (!agg.accountId) continue
+    const current = balanceMap.get(agg.accountId) ?? 0
+    const sum = Number(agg._sum.amount ?? 0)
+    balanceMap.set(agg.accountId, agg.type === 'INCOME' ? current + sum : current - sum)
+  }
+
+  const futureByAccount = new Map<string, { inflow: number; outflow: number }>()
+  for (const tx of futureRecurringTxs) {
+    if (!tx.accountId) continue
+    const entry = futureByAccount.get(tx.accountId) ?? { inflow: 0, outflow: 0 }
+    if (tx.type === 'INCOME') entry.inflow += Number(tx.amount)
+    else entry.outflow += Number(tx.amount)
+    futureByAccount.set(tx.accountId, entry)
+  }
+
+  const accountProjections: AccountProjection[] = accounts.map((a) => {
+    const delta = futureByAccount.get(a.id) ?? { inflow: 0, outflow: 0 }
+    const currentBalance = balanceMap.get(a.id) ?? Number(a.initialBalance)
+    return {
+      accountId: a.id,
+      accountName: a.name,
+      accountColor: a.color,
+      currentBalance,
+      futureInflow: delta.inflow,
+      futureOutflow: delta.outflow,
+      projectedBalance: currentBalance + delta.inflow - delta.outflow,
+    }
+  })
+
   // ── Breakdown details for info modals ─────────────────────────────────────
   const incomeBreakdown = {
     realizedItems: realizedIncomeItems,
@@ -238,7 +370,6 @@ export async function getMonthlyProjection(
     })
   }
 
-  // Add credit card due-date events to calendar
   for (const stmt of ccDueStatements) {
     const openBalance = Math.max(0, Number(stmt.totalSpent) - Number(stmt.totalPaid))
     if (openBalance <= 0) continue
@@ -253,7 +384,6 @@ export async function getMonthlyProjection(
     })
   }
 
-  // Add liability events (only those due this month) to calendar
   for (const liability of allActiveLiabilities) {
     if (!liability.dueDate) continue
     const d = new Date(liability.dueDate)
@@ -268,7 +398,6 @@ export async function getMonthlyProjection(
     })
   }
 
-  // Build day-by-day array
   const todayString = toDateString(new Date(year, month, todayDay))
   const calendarDays: CalendarDay[] = []
 
@@ -295,6 +424,11 @@ export async function getMonthlyProjection(
     variableExpenses,
     dailyVariableAvg,
     daysRemaining,
+    confirmedIncome,
+    confirmedExpense,
+    estimatedVariableExpense,
+    scenarios,
+    accountProjections,
     calendarDays,
     incomeBreakdown,
     expenseBreakdown,
