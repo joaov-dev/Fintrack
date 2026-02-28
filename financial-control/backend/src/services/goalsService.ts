@@ -48,7 +48,7 @@ export function computeGoalStatus(
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 async function computeProgress(
-  goal: { id: string; targetAmount: string | number; linkedAccountId: string | null; targetDate: Date | null },
+  goal: { id: string; targetAmount: unknown; linkedAccountId: string | null; targetDate: Date | null },
   prisma: PrismaClient,
 ): Promise<{ currentAmount: number; progress: number; monthlyContribution: number; estimatedCompletion: string | null; status: GoalStatus }> {
   const targetAmount = Number(goal.targetAmount)

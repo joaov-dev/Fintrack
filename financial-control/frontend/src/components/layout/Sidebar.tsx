@@ -4,50 +4,55 @@ import {
   TrendingUp, LayoutDashboard, ArrowLeftRight, Tag, Landmark,
   LogOut, X, BarChart3, Repeat2, FileBarChart, AlertCircle, HeartPulse,
   CalendarClock, Target, Settings, ChevronDown, CreditCard, Lightbulb, Wand2,
+  Crown, Receipt, Lock,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/auth.store'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { cn } from '@/lib/utils'
+import { useEntitlements } from '@/hooks/useBilling'
+import type { FeatureKey } from '@/types'
 
 const navGroups = [
   {
     label: 'Visão Geral',
     items: [
-      { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-      { to: '/insights', icon: Lightbulb, label: 'Insights' },
-      { to: '/financial-health', icon: HeartPulse, label: 'Saúde Financeira' },
-      { to: '/reports', icon: FileBarChart, label: 'Relatórios' },
+      { to: '/dashboard',        icon: LayoutDashboard, label: 'Dashboard' },
+      { to: '/insights',         icon: Lightbulb,       label: 'Insights',          feature: 'INSIGHTS'          as FeatureKey },
+      { to: '/financial-health', icon: HeartPulse,      label: 'Saúde Financeira',  feature: 'FINANCIAL_HEALTH'  as FeatureKey },
+      { to: '/reports',          icon: FileBarChart,    label: 'Relatórios',        feature: 'REPORTS_ADVANCED'  as FeatureKey },
     ],
   },
   {
     label: 'Planejamento',
     items: [
-      { to: '/forecast', icon: CalendarClock, label: 'Fluxo Mensal' },
-      { to: '/goals',    icon: Target,        label: 'Metas' },
+      { to: '/forecast', icon: CalendarClock, label: 'Fluxo Mensal', feature: 'FORECAST' as FeatureKey },
+      { to: '/goals',    icon: Target,        label: 'Metas',        feature: 'GOALS'    as FeatureKey },
     ],
   },
   {
     label: 'Finanças',
     items: [
       { to: '/transactions', icon: ArrowLeftRight, label: 'Transações' },
-      { to: '/recurring', icon: Repeat2, label: 'Recorrências' },
-      { to: '/accounts', icon: Landmark, label: 'Contas' },
-      { to: '/credit-cards', icon: CreditCard, label: 'Cartões' },
+      { to: '/recurring',    icon: Repeat2,        label: 'Recorrências', feature: 'RECURRING_TRANSACTIONS' as FeatureKey },
+      { to: '/accounts',     icon: Landmark,       label: 'Contas' },
+      { to: '/credit-cards', icon: CreditCard,     label: 'Cartões',      feature: 'CREDIT_CARDS'           as FeatureKey },
     ],
   },
   {
     label: 'Patrimônio',
     items: [
-      { to: '/investments', icon: BarChart3, label: 'Investimentos' },
-      { to: '/liabilities', icon: AlertCircle, label: 'Passivos' },
+      { to: '/investments', icon: BarChart3,   label: 'Investimentos', feature: 'INVESTMENTS_ADVANCED' as FeatureKey },
+      { to: '/liabilities', icon: AlertCircle, label: 'Passivos',      feature: 'LIABILITIES'          as FeatureKey },
     ],
   },
   {
     label: 'Configurações',
     items: [
       { to: '/categories', icon: Tag,      label: 'Categorias' },
-      { to: '/rules',      icon: Wand2,    label: 'Regras Auto' },
+      { to: '/rules',      icon: Wand2,    label: 'Regras Auto', feature: 'RULES_AUTOCATEGORIZATION' as FeatureKey },
       { to: '/settings',   icon: Settings, label: 'Minha Conta' },
+      { to: '/upgrade',    icon: Crown,    label: 'Upgrade' },
+      { to: '/billing',    icon: Receipt,  label: 'Assinatura' },
     ],
   },
 ]
@@ -62,6 +67,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const navigate = useNavigate()
   const [isDesktop, setIsDesktop] = useState(false)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const { data: entitlements } = useEntitlements()
 
   useEffect(() => {
     const mq = window.matchMedia('(min-width: 1024px)')
@@ -83,6 +89,11 @@ export function Sidebar({ open, onClose }: SidebarProps) {
   const handleLogout = () => {
     logout()
     navigate('/login')
+  }
+
+  const isLocked = (feature?: FeatureKey) => {
+    if (!feature || !entitlements) return false
+    return !entitlements.features[feature]?.enabled
   }
 
   return (
@@ -111,7 +122,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shadow-sm dark:shadow-primary/20">
             <TrendingUp className="w-4 h-4 text-white dark:text-primary-foreground" />
           </div>
-          <span className="font-bold text-slate-900 text-lg">DominaHub</span>
+          <span className="font-bold text-slate-900 dark:text-slate-100 text-lg">DominaHub</span>
           <div className="ml-auto flex items-center gap-1">
             <ThemeToggle />
             <button onClick={onClose} className="lg:hidden text-slate-400 hover:text-slate-600">
@@ -152,25 +163,37 @@ export function Sidebar({ open, onClose }: SidebarProps) {
                     )}
                   >
                     <div className="overflow-hidden space-y-0.5">
-                      {group.items.map(({ to, icon: Icon, label }) => (
-                        <NavLink
-                          key={to}
-                          to={to}
-                          end={to === '/dashboard'}
-                          onClick={onClose}
-                          className={({ isActive }) =>
-                            cn(
-                              'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
-                              isActive
-                                ? 'bg-primary/10 text-primary'
-                                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900',
-                            )
-                          }
-                        >
-                          <Icon className="w-4 h-4" />
-                          {label}
-                        </NavLink>
-                      ))}
+                      {group.items.map(({ to, icon: Icon, label, feature }) => {
+                        const locked = isLocked(feature)
+                        return (
+                          <NavLink
+                            key={to}
+                            to={to}
+                            end={to === '/dashboard'}
+                            onClick={onClose}
+                            className={({ isActive }) =>
+                              cn(
+                                'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all',
+                                isActive
+                                  ? locked
+                                    ? 'bg-slate-100 dark:bg-white/5 text-slate-400 dark:text-slate-600'
+                                    : 'bg-primary/10 text-primary'
+                                  : locked
+                                  ? 'text-slate-400 dark:text-slate-600 hover:bg-slate-50 dark:hover:bg-white/[0.04]'
+                                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/[0.06] hover:text-slate-900 dark:hover:text-slate-100',
+                              )
+                            }
+                          >
+                            <Icon className={cn('w-4 h-4 shrink-0', locked && 'opacity-60')} />
+                            <span className={cn('flex-1 truncate', locked && 'opacity-70')}>
+                              {label}
+                            </span>
+                            {locked && (
+                              <Lock className="w-3 h-3 shrink-0 opacity-50" />
+                            )}
+                          </NavLink>
+                        )
+                      })}
                     </div>
                   </div>
                 </div>
@@ -191,13 +214,13 @@ export function Sidebar({ open, onClose }: SidebarProps) {
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-slate-900 truncate">{user?.name}</p>
+              <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{user?.name}</p>
               <p className="text-xs text-slate-400 truncate">{user?.email}</p>
             </div>
           </div>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg text-sm font-medium text-slate-600 hover:bg-rose-50 hover:text-rose-600 transition-all"
+            className="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400 transition-all"
           >
             <LogOut className="w-4 h-4" />
             Sair

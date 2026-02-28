@@ -5,11 +5,14 @@
     "dev": "tsx watch src/app.ts",
     "build": "tsc",
     "start": "node dist/app.js",
+    "start:prod": "prisma migrate deploy && node dist/app.js",
     "test": "jest",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "stripe:sync": "tsx scripts/stripe-sync.ts",
+    "stripe:listen": "stripe listen --forward-to localhost:3333/api/billing/webhook/stripe"
   },
   "jest": {
     "preset": "ts-jest",
@@ -28,6 +31,7 @@
     "express-rate-limit": "^8.2.1",
     "jsonwebtoken": "^9.0.2",
     "otplib": "^13.3.0",
+    "stripe": "^16.12.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {

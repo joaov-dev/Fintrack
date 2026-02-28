@@ -7,10 +7,12 @@ import {
   deleteRule,
   suggestRule,
 } from '../controllers/categorizationRule.controller'
+import { requireFeature } from '../middlewares/planGate.middleware'
 
 export const categorizationRuleRoutes = Router()
 
 categorizationRuleRoutes.use(authenticate)
+categorizationRuleRoutes.use(requireFeature('RULES_AUTOCATEGORIZATION'))
 categorizationRuleRoutes.get('/suggest', suggestRule)
 categorizationRuleRoutes.get('/',        listRules)
 categorizationRuleRoutes.post('/',       createRule)

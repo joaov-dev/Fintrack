@@ -12,10 +12,12 @@ import {
   addMovement,
   deleteMovement,
 } from '../controllers/investment-movement.controller'
+import { requireFeature } from '../middlewares/planGate.middleware'
 
 export const investmentPositionRoutes = Router()
 
 investmentPositionRoutes.use(authenticate)
+investmentPositionRoutes.use(requireFeature('INVESTMENTS_ADVANCED'))
 investmentPositionRoutes.get('/',     listPositions)
 investmentPositionRoutes.post('/',    createPosition)
 investmentPositionRoutes.put('/:id',  updatePosition)

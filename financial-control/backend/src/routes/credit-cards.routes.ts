@@ -11,13 +11,14 @@ import {
   getStatementDetailHandler,
   payStatementHandler,
 } from '../controllers/cardStatement.controller'
+import { requireFeature, requireUsage } from '../middlewares/planGate.middleware'
 
 export const creditCardRoutes = Router()
 
 creditCardRoutes.use(authenticate)
 
 creditCardRoutes.get('/', listCreditCardsHandler)
-creditCardRoutes.post('/', createCreditCardHandler)
+creditCardRoutes.post('/', requireFeature('CREDIT_CARDS'), requireUsage('CREDIT_CARDS_LIMIT'), createCreditCardHandler)
 creditCardRoutes.patch('/:id', updateCreditCardHandler)
 creditCardRoutes.post('/:id/archive', archiveCreditCardHandler)
 

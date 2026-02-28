@@ -8,6 +8,27 @@ export type InvestmentPositionType = 'STOCK' | 'FUND' | 'FIXED_INCOME' | 'REAL_E
 export type InvestmentMovementType = 'CONTRIBUTION' | 'WITHDRAWAL' | 'DIVIDEND' | 'JCP' | 'INTEREST' | 'BONUS' | 'SPLIT'
 export type LiabilityType = 'LOAN' | 'FINANCING' | 'CREDIT_CARD' | 'OTHER'
 export type DiscountType = 'PERCENTAGE' | 'FIXED'
+export type PlanCode = 'FREE' | 'PRO' | 'BUSINESS'
+export type BillingCycle = 'MONTHLY' | 'YEARLY'
+export type SubscriptionStatus = 'TRIALING' | 'ACTIVE' | 'PAST_DUE' | 'CANCELED' | 'INCOMPLETE' | 'INCOMPLETE_EXPIRED' | 'UNPAID'
+export type FeatureKey =
+  | 'BASIC_DASHBOARD'
+  | 'RECURRING_TRANSACTIONS'
+  | 'GOALS'
+  | 'LIABILITIES'
+  | 'CREDIT_CARDS'
+  | 'CSV_IMPORT'
+  | 'RULES_AUTOCATEGORIZATION'
+  | 'INSIGHTS'
+  | 'FINANCIAL_HEALTH'
+  | 'FORECAST'
+  | 'REPORTS_ADVANCED'
+  | 'INVESTMENTS_ADVANCED'
+  | 'INVESTMENT_ALLOCATION'
+  | 'EXPORT_DATA'
+  | 'ACCOUNTS_LIMIT'
+  | 'CREDIT_CARDS_LIMIT'
+  | 'TRANSACTIONS_MONTHLY_LIMIT'
 
 export interface User {
   id: string
@@ -31,6 +52,27 @@ export interface User {
   emailGoals?: boolean
   emailDue?: boolean
   emailInsights?: boolean
+  // Subscription
+  currentPlan?: PlanCode
+  subscriptionStatus?: SubscriptionStatus | null
+  subscriptionEndsAt?: string | null
+  trialEndsAt?: string | null
+  graceUntil?: string | null
+}
+
+export interface FeatureAccess {
+  enabled: boolean
+  limitPerMonth: number | null
+  usageThisMonth: number | null
+}
+
+export interface Entitlements {
+  plan: PlanCode
+  subscriptionStatus: SubscriptionStatus | null
+  trialEndsAt: string | null
+  subscriptionEndsAt: string | null
+  graceUntil: string | null
+  features: Record<FeatureKey, FeatureAccess>
 }
 
 export interface Session {

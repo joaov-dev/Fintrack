@@ -105,6 +105,12 @@ const USER_SELECT = {
   emailGoals: true,
   emailDue: true,
   emailInsights: true,
+  // Subscription
+  currentPlan: true,
+  subscriptionStatus: true,
+  subscriptionEndsAt: true,
+  trialEndsAt: true,
+  graceUntil: true,
 } as const
 
 // ── Preferences schema ─────────────────────────────────────────────────────────
@@ -138,7 +144,7 @@ export async function register(req: Request, res: Response) {
   const passwordHash = await bcrypt.hash(password, 10)
   const user = await prisma.user.create({
     data: { name, email, passwordHash },
-    select: { id: true, name: true, email: true },
+    select: USER_SELECT,
   })
 
   await createDefaultCategories(user.id)
@@ -172,7 +178,17 @@ export async function login(req: Request, res: Response) {
   return res.json({
     accessToken,
     sessionId: session.id,
-    user: { id: user.id, name: user.name, email: user.email, mfaEnabled: user.mfaEnabled },
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      mfaEnabled: user.mfaEnabled,
+      currentPlan: user.currentPlan,
+      subscriptionStatus: user.subscriptionStatus,
+      subscriptionEndsAt: user.subscriptionEndsAt,
+      trialEndsAt: user.trialEndsAt,
+      graceUntil: user.graceUntil,
+    },
   })
 }
 
@@ -280,7 +296,17 @@ export async function verifyMfa(req: Request, res: Response) {
   return res.json({
     accessToken,
     sessionId: session.id,
-    user: { id: user.id, name: user.name, email: user.email, mfaEnabled: user.mfaEnabled },
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      mfaEnabled: user.mfaEnabled,
+      currentPlan: user.currentPlan,
+      subscriptionStatus: user.subscriptionStatus,
+      subscriptionEndsAt: user.subscriptionEndsAt,
+      trialEndsAt: user.trialEndsAt,
+      graceUntil: user.graceUntil,
+    },
   })
 }
 

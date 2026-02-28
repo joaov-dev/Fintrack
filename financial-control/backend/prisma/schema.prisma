@@ -33,6 +33,14 @@ model User {
   emailDue      Boolean @default(false)
   emailInsights Boolean @default(false)
 
+  // ── Assinatura / Billing ─────────────────────────────────────────────────────
+  currentPlan        PlanCode            @default(FREE)
+  subscriptionStatus SubscriptionStatus?
+  subscriptionEndsAt DateTime?
+  trialEndsAt        DateTime?
+  graceUntil         DateTime?
+  billingCustomerId  String?             @unique
+
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -55,6 +63,10 @@ model User {
   tags                   Tag[]
   transactionAttachments TransactionAttachment[]
   categorizationRules    CategorizationRule[]
+  subscriptions          Subscription[]
+  usageCounters          UsageCounter[]
+  subscriptionEvents     SubscriptionEvent[]
+  billingProfile         BillingCustomer?       @relation("UserBillingProfile")
 
   @@map("users")
 }
@@ -288,6 +300,131 @@ model InstallmentPlan {
   @@map("installment_plans")
 }
 
+model Plan {
+  id           String    @id @default(cuid())
+  code         PlanCode  @unique
+  name         String
+  description  String?
+  isActive     Boolean   @default(true)
+  sortOrder    Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  prices        Price[]
+  featureGates  FeatureGate[]
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Price {
+  id              String       @id @default(cuid())
+  planId          String
+  billingCycle    BillingCycle
+  amountCents     Int
+  currency        String       @default("BRL")
+  stripePriceId   String?      @unique
+  stripeProductId String?
+  isActive        Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  plan          Plan           @relation(fields: [planId], references: [id], onDelete: Cascade)
+  subscriptions Subscription[]
+
+  @@unique([planId, billingCycle])
+  @@map("prices")
+}
+
+model BillingCustomer {
+  id               String   @id @default(cuid())
+  userId           String   @unique
+  stripeCustomerId String   @unique
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user          User           @relation("UserBillingProfile", fields: [userId], references: [id], onDelete: Cascade)
+  subscriptions Subscription[]
+
+  @@map("billing_customers")
+}
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  userId               String
+  planId               String
+  priceId              String?
+  billingCustomerId    String?
+  status               SubscriptionStatus
+  stripeSubscriptionId String?            @unique
+  currentPeriodStart   DateTime?
+  currentPeriodEnd     DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  canceledAt           DateTime?
+  trialEndsAt          DateTime?
+  graceUntil           DateTime?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan            Plan             @relation(fields: [planId], references: [id], onDelete: Restrict)
+  price           Price?           @relation(fields: [priceId], references: [id], onDelete: SetNull)
+  billingCustomer BillingCustomer? @relation(fields: [billingCustomerId], references: [id], onDelete: SetNull)
+  events          SubscriptionEvent[]
+
+  @@index([userId, status])
+  @@map("subscriptions")
+}
+
+model SubscriptionEvent {
+  id              String   @id @default(cuid())
+  subscriptionId  String?
+  userId          String?
+  source          String
+  eventType       String
+  externalEventId String?
+  payload         Json?
+  createdAt       DateTime @default(now())
+
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([source, externalEventId])
+  @@index([userId, eventType])
+  @@map("subscription_events")
+}
+
+model FeatureGate {
+  id            String     @id @default(cuid())
+  planId        String
+  featureKey    FeatureKey
+  enabled       Boolean    @default(false)
+  limitPerMonth Int?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  plan Plan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, featureKey])
+  @@map("feature_gates")
+}
+
+model UsageCounter {
+  id         String     @id @default(cuid())
+  userId     String
+  featureKey FeatureKey
+  year       Int
+  month      Int
+  usageCount Int        @default(0)
+  updatedAt  DateTime   @updatedAt
+  createdAt  DateTime   @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, featureKey, year, month])
+  @@map("usage_counters")
+}
+
 enum AccountType {
   CHECKING
   SAVINGS
@@ -495,6 +632,47 @@ enum MicroGoalStatus {
 enum MicroGoalScopeType {
   CATEGORY
   TOTAL_SPEND
+}
+
+enum PlanCode {
+  FREE
+  PRO
+  BUSINESS
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+  UNPAID
+}
+
+enum FeatureKey {
+  BASIC_DASHBOARD
+  RECURRING_TRANSACTIONS
+  GOALS
+  LIABILITIES
+  CREDIT_CARDS
+  CSV_IMPORT
+  RULES_AUTOCATEGORIZATION
+  INSIGHTS
+  FINANCIAL_HEALTH
+  FORECAST
+  REPORTS_ADVANCED
+  INVESTMENTS_ADVANCED
+  INVESTMENT_ALLOCATION
+  EXPORT_DATA
+  ACCOUNTS_LIMIT
+  CREDIT_CARDS_LIMIT
+  TRANSACTIONS_MONTHLY_LIMIT
 }
 
 // ── Tags (many-to-many com Transaction) ───────────────────────────────────────

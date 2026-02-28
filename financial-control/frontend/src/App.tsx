@@ -22,6 +22,12 @@ import CreditCardsPage from '@/pages/CreditCardsPage'
 import CreditCardDetailPage from '@/pages/CreditCardDetailPage'
 import InsightsPage from '@/pages/InsightsPage'
 import RulesPage from '@/pages/RulesPage'
+import PricingPage from '@/pages/PricingPage'
+import BillingPage from '@/pages/BillingPage'
+import UpgradePage from '@/pages/UpgradePage'
+import CheckoutSuccessPage from '@/pages/CheckoutSuccessPage'
+import CheckoutCanceledPage from '@/pages/CheckoutCanceledPage'
+import { FeatureRoute } from '@/components/billing/FeatureRoute'
 
 /** Shows LandingPage to visitors; redirects authenticated users to dashboard. */
 function RootRoute() {
@@ -65,6 +71,9 @@ export default function App() {
       <Routes>
         {/* Public landing page */}
         <Route path="/" element={<RootRoute />} />
+        <Route path="/pricing" element={<PricingPage />} />
+        <Route path="/checkout/success" element={<CheckoutSuccessPage />} />
+        <Route path="/checkout/canceled" element={<CheckoutCanceledPage />} />
 
         {/* Auth */}
         <Route path="/login" element={<PublicRoute><AuthPage /></PublicRoute>} />
@@ -80,19 +89,21 @@ export default function App() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/transactions" element={<TransactionsPage />} />
           <Route path="/accounts" element={<AccountsPage />} />
-          <Route path="/investments" element={<InvestmentsPage />} />
-          <Route path="/recurring" element={<RecurringPage />} />
-          <Route path="/reports" element={<ReportsPage />} />
-          <Route path="/liabilities" element={<LiabilitiesPage />} />
-          <Route path="/financial-health" element={<FinancialHealthPage />} />
-          <Route path="/forecast" element={<ForecastPage />} />
-          <Route path="/goals" element={<GoalsPage />} />
+          <Route path="/recurring" element={<FeatureRoute feature="RECURRING_TRANSACTIONS"><RecurringPage /></FeatureRoute>} />
+          <Route path="/reports" element={<FeatureRoute feature="REPORTS_ADVANCED"><ReportsPage /></FeatureRoute>} />
+          <Route path="/liabilities" element={<FeatureRoute feature="LIABILITIES"><LiabilitiesPage /></FeatureRoute>} />
+          <Route path="/financial-health" element={<FeatureRoute feature="FINANCIAL_HEALTH"><FinancialHealthPage /></FeatureRoute>} />
+          <Route path="/forecast" element={<FeatureRoute feature="FORECAST"><ForecastPage /></FeatureRoute>} />
+          <Route path="/goals" element={<FeatureRoute feature="GOALS"><GoalsPage /></FeatureRoute>} />
           <Route path="/categories" element={<CategoriesPage />} />
           <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/credit-cards" element={<CreditCardsPage />} />
-          <Route path="/credit-cards/:id" element={<CreditCardDetailPage />} />
-          <Route path="/insights" element={<InsightsPage />} />
-          <Route path="/rules" element={<RulesPage />} />
+          <Route path="/credit-cards" element={<FeatureRoute feature="CREDIT_CARDS"><CreditCardsPage /></FeatureRoute>} />
+          <Route path="/credit-cards/:id" element={<FeatureRoute feature="CREDIT_CARDS"><CreditCardDetailPage /></FeatureRoute>} />
+          <Route path="/insights" element={<FeatureRoute feature="INSIGHTS"><InsightsPage /></FeatureRoute>} />
+          <Route path="/rules" element={<FeatureRoute feature="RULES_AUTOCATEGORIZATION"><RulesPage /></FeatureRoute>} />
+          <Route path="/upgrade" element={<UpgradePage />} />
+          <Route path="/billing" element={<BillingPage />} />
+          <Route path="/investments" element={<FeatureRoute feature="INVESTMENTS_ADVANCED"><InvestmentsPage /></FeatureRoute>} />
         </Route>
 
         {/* Fallback */}

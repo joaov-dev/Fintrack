@@ -6,6 +6,7 @@ import { prisma } from '../services/prisma'
 import { getOrCreateStatement, recalculateStatement } from '../services/cardStatementService'
 import { getInstallmentDate } from '../services/billingCycleUtils'
 import { suggestFromRules } from '../services/categorizationRules.service'
+import { checkFeatureAccess, checkUsageLimit } from '../services/billing.service'
 
 // ── Shared include for all transaction responses ───────────────────────────────
 
@@ -224,6 +225,19 @@ export async function createTransaction(req: AuthRequest, res: Response) {
   const data = transactionSchema.parse(req.body)
   const userId = req.userId!
 
+  if (data.isRecurring) {
+    const recurringAllowed = await checkFeatureAccess(userId, 'RECURRING_TRANSACTIONS')
+    if (!recurringAllowed) {
+      return res.status(402).json({ code: 'PLAN_REQUIRED', error: 'Recorrências disponíveis apenas no plano Pro+' })
+    }
+  }
+
+  const txCountIncrement = data.paymentMethod === 'CREDIT_CARD' ? (data.installments ?? 1) : 1
+  const usageAllowed = await checkUsageLimit(userId, 'TRANSACTIONS_MONTHLY_LIMIT', txCountIncrement)
+  if (!usageAllowed) {
+    return res.status(429).json({ code: 'PLAN_LIMIT_REACHED', error: 'Limite mensal de transações atingido no plano atual' })
+  }
+
   const category = await prisma.category.findFirst({ where: { id: data.categoryId, userId } })
   if (!category) return res.status(400).json({ error: 'Categoria inválida' })
 
@@ -342,6 +356,11 @@ export async function createSplitTransaction(req: AuthRequest, res: Response) {
   const data = splitSchema.parse(req.body)
   const userId = req.userId!
 
+  const usageAllowed = await checkUsageLimit(userId, 'TRANSACTIONS_MONTHLY_LIMIT', data.parts.length)
+  if (!usageAllowed) {
+    return res.status(429).json({ code: 'PLAN_LIMIT_REACHED', error: 'Limite mensal de transações atingido no plano atual' })
+  }
+
   if (data.accountId) {
     const account = await prisma.account.findFirst({ where: { id: data.accountId, userId } })
     if (!account) return res.status(400).json({ error: 'Conta inválida' })
@@ -386,6 +405,13 @@ export async function updateTransaction(req: AuthRequest, res: Response) {
   // editScope: 'only' (default) | 'future' | 'all'
   const editScope = (req.body.editScope ?? 'only') as 'only' | 'future' | 'all'
   const data = transactionSchema.partial().parse(req.body)
+
+  if (data.isRecurring === true || data.recurrenceType) {
+    const recurringAllowed = await checkFeatureAccess(req.userId!, 'RECURRING_TRANSACTIONS')
+    if (!recurringAllowed) {
+      return res.status(402).json({ code: 'PLAN_REQUIRED', error: 'Recorrências disponíveis apenas no plano Pro+' })
+    }
+  }
 
   const transaction = await prisma.transaction.findFirst({ where: { id, userId: req.userId } })
   if (!transaction) return res.status(404).json({ error: 'Transação não encontrada' })

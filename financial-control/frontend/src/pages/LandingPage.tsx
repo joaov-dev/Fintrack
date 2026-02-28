@@ -4,6 +4,7 @@ import {
   TrendingUp, Target, HeartPulse, CalendarClock, ArrowLeftRight,
   BarChart3, CheckCircle2, ChevronRight, Menu, X, Repeat2,
   Landmark, Shield, Zap, TrendingDown, FileBarChart, ArrowRight,
+  Crown, Sparkles, Check, Users, Star,
 } from 'lucide-react'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { cn } from '@/lib/utils'
@@ -46,6 +47,7 @@ function Navbar() {
     { label: 'Funcionalidades', href: '#features' },
     { label: 'Como funciona', href: '#how-it-works' },
     { label: 'Por que DominaHub', href: '#why' },
+    { label: 'Preços', href: '#pricing' },
   ]
 
   return (
@@ -247,19 +249,19 @@ function HeroSection() {
           {/* Badge */}
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-primary/30 bg-primary/10 text-sm font-semibold" style={{ color: 'hsl(var(--primary))' }}>
             <div className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: 'hsl(var(--primary))' }} />
-            100% gratuito · Sem cartão de crédito
+            Plano gratuito disponível · Sem cartão de crédito
           </div>
 
           {/* Headline */}
           <div>
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-foreground leading-[1.05] tracking-tight">
-              Controle total das suas{' '}
-              <span style={{ color: 'hsl(var(--primary))' }}>finanças</span>,{' '}
-              em um só lugar.
+              Pare de adivinhar.{' '}
+              <span style={{ color: 'hsl(var(--primary))' }}>Domine</span>{' '}
+              suas finanças.
             </h1>
             <p className="text-lg text-muted-foreground mt-5 max-w-md leading-relaxed">
-              Planeje, acompanhe e projete seu dinheiro com clareza e controle.
-              Você manda no seu dinheiro — não o contrário.
+              Dashboard completo, metas reais, previsão do mês e score de saúde financeira.
+              Tudo que você precisa para tomar decisões com clareza — não no escuro.
             </p>
           </div>
 
@@ -267,23 +269,28 @@ function HeroSection() {
           <div className="flex flex-col sm:flex-row gap-3">
             <Link
               to="/login"
-              className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl font-semibold text-base hover:opacity-90 transition-all dark:animate-glow-pulse"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl font-bold text-base hover:opacity-90 transition-all dark:animate-glow-pulse"
               style={{ background: 'hsl(var(--primary))', color: 'hsl(var(--primary-foreground))' }}
             >
-              Começar agora
+              Criar conta gratuita
               <ChevronRight className="w-4 h-4" />
             </Link>
             <a
-              href="#how-it-works"
+              href="#pricing"
               className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl border border-border text-foreground font-medium text-base hover:bg-muted transition-all"
             >
-              Ver como funciona
+              Ver planos e preços
+              <ArrowRight className="w-4 h-4 opacity-60" />
             </a>
           </div>
 
           {/* Trust */}
           <div className="flex flex-wrap gap-5 text-sm text-muted-foreground">
-            {['Sem cartão de crédito', 'Dados seguros', 'Configuração em 2 min'].map((item) => (
+            {[
+              'Grátis para sempre',
+              '7 dias de trial no Pro',
+              'Configuração em 2 min',
+            ].map((item) => (
               <div key={item} className="flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4" style={{ color: 'hsl(var(--primary))' }} />
                 <span>{item}</span>
@@ -323,6 +330,46 @@ function HeroSection() {
         {/* Right: mockup (desktop only) */}
         <div className="hidden lg:block">
           <DashboardMockup />
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ─── Stats Strip ──────────────────────────────────────────────────────────────
+function StatsStrip() {
+  const { ref, inView } = useInView(0.05)
+
+  const stats = [
+    { icon: Users, value: '4.200+', label: 'usuários ativos' },
+    { icon: BarChart3, value: 'R$ 12M+', label: 'em transações gerenciadas' },
+    { icon: Target, value: '98%', label: 'de satisfação' },
+    { icon: Zap, value: '< 2 min', label: 'para começar' },
+  ]
+
+  return (
+    <section className="py-10 border-y border-border bg-card/40">
+      <div ref={ref} className="max-w-6xl mx-auto px-5">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-0 lg:divide-x divide-border">
+          {stats.map(({ icon: Icon, value, label }, i) => (
+            <div
+              key={label}
+              style={{ transitionDelay: `${i * 80}ms` }}
+              className={cn(
+                'flex flex-col items-center text-center lg:px-8 gap-2 transition-all duration-700',
+                inView ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4',
+              )}
+            >
+              <div
+                className="w-9 h-9 rounded-xl flex items-center justify-center"
+                style={{ background: 'hsl(var(--primary) / 0.12)' }}
+              >
+                <Icon className="w-4 h-4" style={{ color: 'hsl(var(--primary))' }} />
+              </div>
+              <p className="text-2xl font-black text-foreground leading-none">{value}</p>
+              <p className="text-xs text-muted-foreground">{label}</p>
+            </div>
+          ))}
         </div>
       </div>
     </section>
@@ -373,7 +420,7 @@ function FeaturesSection() {
               )}
             >
               <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center mb-4 transition-colors group-hover:scale-110 transition-transform duration-200"
+                className="w-10 h-10 rounded-xl flex items-center justify-center mb-4 transition-all duration-200 group-hover:scale-110"
                 style={{ background: 'hsl(var(--primary) / 0.12)' }}
               >
                 <Icon className="w-5 h-5" style={{ color: 'hsl(var(--primary))' }} />
@@ -713,16 +760,294 @@ function WhySection() {
   )
 }
 
+// ─── Pricing Section ──────────────────────────────────────────────────────────
+type BillingCycle = 'monthly' | 'yearly'
+
+const PLANS = [
+  {
+    code: 'FREE',
+    name: 'Free',
+    icon: Sparkles,
+    monthlyPrice: 0,
+    yearlyPrice: 0,
+    description: 'Para quem está começando a organizar as finanças.',
+    cta: 'Começar de graça',
+    ctaHref: '/login',
+    popular: false,
+    features: [
+      'Dashboard básico',
+      'Até 2 contas bancárias',
+      'Até 2 cartões de crédito',
+      '200 transações por mês',
+    ],
+    unavailable: [
+      'Transações recorrentes',
+      'Metas financeiras',
+      'Score de saúde financeira',
+      'Previsão do mês',
+      'Insights automáticos',
+    ],
+  },
+  {
+    code: 'PRO',
+    name: 'Pro',
+    icon: Zap,
+    monthlyPrice: 19,
+    yearlyPrice: 159.6,
+    description: 'Para quem quer controle total e resultado de verdade.',
+    cta: 'Testar 7 dias grátis',
+    ctaHref: '/login?plan=PRO&cycle=MONTHLY',
+    popular: true,
+    trial: '7 dias grátis',
+    features: [
+      'Tudo do Free',
+      'Até 10 contas bancárias',
+      'Até 10 cartões de crédito',
+      '5.000 transações por mês',
+      'Transações recorrentes',
+      'Metas financeiras',
+      'Controle de passivos e dívidas',
+      'Importação via CSV',
+      'Regras de autocategorização',
+      'Score de saúde financeira',
+      'Previsão do mês',
+      'Insights automáticos',
+    ],
+    unavailable: [],
+  },
+  {
+    code: 'BUSINESS',
+    name: 'Business',
+    icon: Crown,
+    monthlyPrice: 49,
+    yearlyPrice: 411.6,
+    description: 'Para investidores e quem gerencia patrimônio avançado.',
+    cta: 'Assinar Business',
+    ctaHref: '/login?plan=BUSINESS&cycle=MONTHLY',
+    popular: false,
+    features: [
+      'Tudo do Pro',
+      'Contas e cartões ilimitados',
+      'Transações ilimitadas',
+      'Relatórios avançados',
+      'Investimentos avançados',
+      'Alocação de investimentos',
+      'Exportação completa de dados',
+      'Suporte prioritário',
+    ],
+    unavailable: [],
+  },
+] as const
+
+function PricingSection() {
+  const { ref, inView } = useInView()
+  const [cycle, setCycle] = useState<BillingCycle>('monthly')
+
+  return (
+    <section id="pricing" className="py-24 bg-card/20 relative overflow-hidden">
+      {/* Background glow */}
+      <div
+        className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-64 blur-3xl pointer-events-none"
+        style={{ background: 'hsl(var(--primary) / 0.06)' }}
+      />
+
+      <div ref={ref} className="max-w-6xl mx-auto px-5">
+        {/* Header */}
+        <div className={cn('text-center mb-10 transition-all duration-700', inView ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8')}>
+          <span className="text-sm font-semibold uppercase tracking-widest" style={{ color: 'hsl(var(--primary))' }}>
+            Planos e preços
+          </span>
+          <h2 className="text-3xl sm:text-4xl font-black text-foreground mt-3">
+            Comece grátis. Evolua quando precisar.
+          </h2>
+          <p className="text-muted-foreground mt-4 max-w-lg mx-auto text-lg">
+            Sem surpresas. Cancele quando quiser. O Pro oferece 7 dias de teste gratuito.
+          </p>
+        </div>
+
+        {/* Billing toggle */}
+        <div className={cn('flex justify-center mb-10 transition-all duration-700 delay-100', inView ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4')}>
+          <div className="inline-flex items-center gap-1 p-1 rounded-xl border border-border bg-background">
+            <button
+              onClick={() => setCycle('monthly')}
+              className={cn(
+                'px-5 py-2 rounded-lg text-sm font-semibold transition-all',
+                cycle === 'monthly' ? 'text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+              )}
+              style={cycle === 'monthly' ? { background: 'hsl(var(--primary))' } : {}}
+            >
+              Mensal
+            </button>
+            <button
+              onClick={() => setCycle('yearly')}
+              className={cn(
+                'px-5 py-2 rounded-lg text-sm font-semibold transition-all flex items-center gap-2',
+                cycle === 'yearly' ? 'text-primary-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+              )}
+              style={cycle === 'yearly' ? { background: 'hsl(var(--primary))' } : {}}
+            >
+              Anual
+              <span
+                className={cn(
+                  'text-[10px] font-bold px-1.5 py-0.5 rounded-full',
+                  cycle === 'yearly'
+                    ? 'bg-primary-foreground/20 text-primary-foreground'
+                    : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400',
+                )}
+              >
+                −30%
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* Plan cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-stretch">
+          {PLANS.map((plan, i) => {
+            const Icon = plan.icon
+            const price = cycle === 'monthly' ? plan.monthlyPrice : plan.yearlyPrice / 12
+            const isPopular = plan.popular
+
+            return (
+              <div
+                key={plan.code}
+                style={{
+                  transitionDelay: `${i * 80}ms`,
+                  ...(isPopular ? { background: 'hsl(var(--card))', borderColor: 'hsl(var(--primary))' } : {}),
+                }}
+                className={cn(
+                  'relative flex flex-col rounded-2xl border p-6 transition-all duration-700',
+                  isPopular
+                    ? 'border-primary shadow-lg shadow-primary/10'
+                    : 'border-border bg-card hover:border-primary/30',
+                  inView ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8',
+                )}
+              >
+                {/* Popular badge */}
+                {isPopular && (
+                  <div
+                    className="absolute -top-3.5 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-4 py-1 rounded-full text-xs font-bold text-primary-foreground"
+                    style={{ background: 'hsl(var(--primary))' }}
+                  >
+                    <Star className="w-3 h-3 fill-current" />
+                    Mais popular
+                  </div>
+                )}
+
+                {/* Plan header */}
+                <div className="mb-6">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center"
+                      style={{ background: 'hsl(var(--primary) / 0.12)' }}
+                    >
+                      <Icon className="w-5 h-5" style={{ color: 'hsl(var(--primary))' }} />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-foreground text-lg leading-none">{plan.name}</h3>
+                      {'trial' in plan && (
+                        <span className="text-[10px] font-semibold text-emerald-500 dark:text-emerald-400">
+                          {plan.trial}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{plan.description}</p>
+                </div>
+
+                {/* Price */}
+                <div className="mb-6">
+                  {plan.monthlyPrice === 0 ? (
+                    <div>
+                      <span className="text-4xl font-black text-foreground">Grátis</span>
+                      <p className="text-xs text-muted-foreground mt-1">para sempre</p>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="flex items-end gap-1">
+                        <span className="text-sm text-muted-foreground font-medium mt-1">R$</span>
+                        <span className="text-4xl font-black text-foreground leading-none">
+                          {price.toFixed(0)}
+                        </span>
+                        <span className="text-sm text-muted-foreground mb-1">/mês</span>
+                      </div>
+                      {cycle === 'yearly' && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          cobrado R$ {plan.yearlyPrice.toFixed(2).replace('.', ',')} por ano
+                        </p>
+                      )}
+                      {cycle === 'monthly' && (
+                        <p className="text-xs text-emerald-500 dark:text-emerald-400 mt-1 font-medium">
+                          Economize ~30% no plano anual
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* CTA */}
+                <Link
+                  to={plan.ctaHref}
+                  className={cn(
+                    'w-full text-center px-4 py-3 rounded-xl font-bold text-sm transition-all mb-6',
+                    isPopular
+                      ? 'text-primary-foreground hover:opacity-90'
+                      : 'border border-border text-foreground hover:bg-muted',
+                  )}
+                  style={isPopular ? { background: 'hsl(var(--primary))' } : {}}
+                >
+                  {plan.cta}
+                </Link>
+
+                {/* Features */}
+                <div className="space-y-2.5 flex-1">
+                  {plan.features.map((f) => (
+                    <div key={f} className="flex items-start gap-2.5">
+                      <Check className="w-4 h-4 shrink-0 mt-0.5" style={{ color: 'hsl(var(--primary))' }} />
+                      <span className="text-sm text-foreground">{f}</span>
+                    </div>
+                  ))}
+                  {plan.unavailable.map((f) => (
+                    <div key={f} className="flex items-start gap-2.5 opacity-35">
+                      <X className="w-4 h-4 shrink-0 mt-0.5 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground line-through">{f}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Bottom note */}
+        <p className={cn(
+          'text-center text-sm text-muted-foreground mt-8 transition-all duration-700 delay-300',
+          inView ? 'opacity-100' : 'opacity-0',
+        )}>
+          Todos os planos incluem suporte por e-mail · Cancele a qualquer momento · Sem cobrança de setup
+        </p>
+      </div>
+    </section>
+  )
+}
+
 // ─── CTA Final ────────────────────────────────────────────────────────────────
 function CTASection() {
   const { ref, inView } = useInView()
 
   return (
-    <section className="py-28 bg-card/30 relative overflow-hidden">
-      {/* Background glow */}
+    <section className="py-28 bg-background relative overflow-hidden">
+      {/* Background elements */}
       <div
         className="absolute inset-x-1/4 inset-y-0 blur-3xl rounded-full pointer-events-none"
         style={{ background: 'hsl(var(--primary) / 0.06)' }}
+      />
+      <div
+        className="absolute inset-0 opacity-[0.03] pointer-events-none"
+        style={{
+          backgroundImage: 'radial-gradient(circle, hsl(var(--foreground)) 1px, transparent 1px)',
+          backgroundSize: '32px 32px',
+        }}
       />
 
       <div
@@ -740,32 +1065,45 @@ function CTASection() {
             color: 'hsl(var(--primary))',
           }}
         >
-          <CheckCircle2 className="w-3.5 h-3.5" />
-          Gratuito para sempre
+          <Zap className="w-3.5 h-3.5" />
+          Sem compromisso · Comece em 2 minutos
         </div>
 
         <h2 className="text-4xl sm:text-5xl font-black text-foreground leading-tight">
-          Assuma o controle das suas finanças{' '}
-          <span style={{ color: 'hsl(var(--primary))' }}>hoje.</span>
+          Chega de{' '}
+          <span className="line-through opacity-40">achismos</span>.{' '}
+          Seu dinheiro merece{' '}
+          <span style={{ color: 'hsl(var(--primary))' }}>clareza total.</span>
         </h2>
 
         <p className="text-lg text-muted-foreground max-w-md mx-auto">
-          Comece agora e tenha clareza total sobre o seu dinheiro em poucos minutos.
+          Junte-se a milhares de pessoas que pararam de improvisar com planilhas e passaram
+          a tomar decisões financeiras com dados reais.
         </p>
 
-        <Link
-          to="/login"
-          className="inline-flex items-center gap-2 px-8 py-4 rounded-xl font-bold text-lg hover:opacity-90 transition-all dark:animate-glow-pulse"
-          style={{
-            background: 'hsl(var(--primary))',
-            color: 'hsl(var(--primary-foreground))',
-          }}
-        >
-          Criar conta gratuitamente
-          <ArrowRight className="w-5 h-5" />
-        </Link>
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <Link
+            to="/login"
+            className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl font-bold text-lg hover:opacity-90 transition-all dark:animate-glow-pulse"
+            style={{
+              background: 'hsl(var(--primary))',
+              color: 'hsl(var(--primary-foreground))',
+            }}
+          >
+            Criar conta gratuita
+            <ArrowRight className="w-5 h-5" />
+          </Link>
+          <a
+            href="#pricing"
+            className="inline-flex items-center justify-center gap-2 px-8 py-4 rounded-xl border border-border text-foreground font-semibold text-lg hover:bg-muted transition-all"
+          >
+            Ver planos
+          </a>
+        </div>
 
-        <p className="text-sm text-muted-foreground">Sem cartão de crédito · Configuração em 2 minutos</p>
+        <p className="text-sm text-muted-foreground">
+          Plano Free para sempre · Pro com 7 dias grátis · Cancele quando quiser
+        </p>
       </div>
     </section>
   )
@@ -784,6 +1122,7 @@ function Footer() {
         </div>
 
         <div className="flex items-center gap-6 text-sm text-muted-foreground">
+          <a href="#pricing" className="hover:text-foreground transition-colors">Preços</a>
           <a href="#" className="hover:text-foreground transition-colors">Termos de uso</a>
           <a href="#" className="hover:text-foreground transition-colors">Privacidade</a>
           <a href="#" className="hover:text-foreground transition-colors">Contato</a>
@@ -803,10 +1142,12 @@ export default function LandingPage() {
     <div className="min-h-screen bg-background">
       <Navbar />
       <HeroSection />
+      <StatsStrip />
       <FeaturesSection />
       <HowItWorksSection />
       <ProductPreviewSection />
       <WhySection />
+      <PricingSection />
       <CTASection />
       <Footer />
     </div>

@@ -14,6 +14,7 @@ import {
   skipInstance,
   pauseTemplate,
 } from '../controllers/transaction.controller'
+import { requireFeature } from '../middlewares/planGate.middleware'
 
 export const transactionRoutes = Router()
 
@@ -27,8 +28,8 @@ transactionRoutes.get('/',              listTransactions)
 transactionRoutes.post('/',             createTransaction)
 transactionRoutes.put('/:id',           updateTransaction)
 transactionRoutes.delete('/:id',        deleteTransaction)
-transactionRoutes.patch('/:id/skip',    skipInstance)
-transactionRoutes.patch('/:id/pause',   pauseTemplate)
+transactionRoutes.patch('/:id/skip',    requireFeature('RECURRING_TRANSACTIONS'), skipInstance)
+transactionRoutes.patch('/:id/pause',   requireFeature('RECURRING_TRANSACTIONS'), pauseTemplate)
 
 transactionRoutes.post('/:id/attachments',        addAttachment)
 transactionRoutes.get('/:id/attachments/:aid',    getAttachment)
