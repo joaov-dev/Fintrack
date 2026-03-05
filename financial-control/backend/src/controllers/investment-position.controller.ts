@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { Decimal } from '@prisma/client/runtime/library'
 import { AuthRequest } from '../middlewares/auth.middleware'
 import { prisma } from '../services/prisma'
+import { audit } from '../lib/audit'
 
 function toNumber(d: Decimal | null | undefined) {
   return d ? Number(d) : 0
@@ -189,6 +190,7 @@ export async function deletePosition(req: AuthRequest, res: Response) {
   if (!position) return res.status(404).json({ error: 'Posição não encontrada' })
 
   await prisma.investmentPosition.delete({ where: { id } })
+  audit('INVESTMENT_POSITION_DELETE', req.userId!, req, { positionId: id, name: position.name })
   return res.status(204).send()
 }
 

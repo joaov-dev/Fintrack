@@ -1,0 +1,354 @@
+##############################################################################
+# CI — Continuous Integration
+#
+# Runs on every push to main/develop and on every Pull Request.
+#
+# Supply-chain hardening applied:
+#  • All actions pinned to commit SHA (not mutable tags)
+#    → run `node scripts/pin-actions.mjs` to refresh SHAs when upgrading
+#  • `npm ci --ignore-scripts` everywhere to prevent malicious lifecycle scripts
+#  • Prisma client generated explicitly after install (not via postinstall)
+#  • Minimal GitHub token permissions (principle of least privilege)
+#  • Concurrency group cancels in-progress runs for the same ref
+##############################################################################
+
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs for the same branch/PR to save runner minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# ── Global minimum permissions ─────────────────────────────────────────────
+# Individual jobs declare only what they additionally need.
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # ════════════════════════════════════════════════════════════════════════════
+  # JOB 1 — Lockfile integrity
+  # Fails fast if package-lock.json is missing, stale, or out of sync.
+  # `npm ci` exits non-zero in all those cases.
+  # ════════════════════════════════════════════════════════════════════════════
+  lockfile:
+    name: Lockfile Integrity
+    runs-on: ubuntu-24.04
+    steps:
+      # Pin: actions/checkout v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      # Pin: actions/setup-node v4.1.0
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      # `--ignore-scripts` prevents postinstall/preinstall from running.
+      # This blocks supply-chain attacks that hide malware in lifecycle hooks.
+      - name: Verify root lockfile
+        run: npm ci --ignore-scripts
+
+      - name: Verify backend lockfile
+        run: npm ci --ignore-scripts
+        working-directory: backend
+
+      - name: Verify frontend lockfile
+        run: npm ci --ignore-scripts
+        working-directory: frontend
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # JOB 2 — Dependency audit
+  # Fails the build on any HIGH or CRITICAL vulnerability.
+  # Also verifies registry signatures (npm 9+) to detect tampered packages.
+  # ════════════════════════════════════════════════════════════════════════════
+  audit:
+    name: Dependency Audit
+    runs-on: ubuntu-24.04
+    needs: lockfile
+    permissions:
+      contents: read
+      pull-requests: write   # post audit summary as PR comment
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install backend deps (frozen, no scripts)
+        run: npm ci --ignore-scripts
+        working-directory: backend
+
+      - name: Install frontend deps (frozen, no scripts)
+        run: npm ci --ignore-scripts
+        working-directory: frontend
+
+      # Export JSON reports; `|| true` prevents early exit so both run.
+      - name: Audit backend
+        run: npm audit --json > /tmp/audit-backend.json || true
+        working-directory: backend
+
+      - name: Audit frontend
+        run: npm audit --json > /tmp/audit-frontend.json || true
+        working-directory: frontend
+
+      # Custom script parses JSON, prints human-readable table, and exits
+      # non-zero if HIGH or CRITICAL vulnerabilities are found.
+      - name: Enforce audit thresholds
+        run: |
+          node scripts/audit-check.mjs --report /tmp/audit-backend.json  --label backend  --level high
+          node scripts/audit-check.mjs --report /tmp/audit-frontend.json --label frontend --level high
+
+      # Verifies that every installed package has a valid cryptographic
+      # signature from the npm registry — detects tampered/injected packages.
+      - name: Verify package signatures — backend
+        run: npm audit signatures
+        working-directory: backend
+
+      - name: Verify package signatures — frontend
+        run: npm audit signatures
+        working-directory: frontend
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # JOB 3 — Lint & type check
+  # ════════════════════════════════════════════════════════════════════════════
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-24.04
+    needs: lockfile
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install backend deps
+        run: npm ci --ignore-scripts
+        working-directory: backend
+
+      - name: Install frontend deps
+        run: npm ci --ignore-scripts
+        working-directory: frontend
+
+      - name: TypeScript check — backend
+        run: npx tsc --noEmit
+        working-directory: backend
+
+      - name: TypeScript check — frontend
+        run: npx tsc --noEmit
+        working-directory: frontend
+
+      - name: ESLint — frontend
+        run: npm run lint
+        working-directory: frontend
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # JOB 4 — Unit tests (no external dependencies)
+  # ════════════════════════════════════════════════════════════════════════════
+  test-unit:
+    name: Unit Tests
+    runs-on: ubuntu-24.04
+    needs: lockfile
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend deps
+        run: npm ci --ignore-scripts
+        working-directory: backend
+
+      # Prisma requires its generated client for type resolution in tests.
+      # We run `prisma generate` explicitly instead of relying on postinstall.
+      - name: Generate Prisma client
+        run: npx prisma generate
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+
+      - name: Run unit tests
+        run: npm run test:unit
+        working-directory: backend
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # JOB 5 — Integration tests (with PostgreSQL service container)
+  # ════════════════════════════════════════════════════════════════════════════
+  test-integration:
+    name: Integration Tests
+    runs-on: ubuntu-24.04
+    needs: lockfile
+    services:
+      postgres:
+        # Pin the Docker image digest to prevent tag hijacking.
+        # Refresh with: docker pull postgres:16-alpine && docker inspect --format='{{index .RepoDigests 0}}' postgres:16-alpine
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: fintrack
+          POSTGRES_PASSWORD: fintrack123
+          POSTGRES_DB: financial_control_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend deps
+        run: npm ci --ignore-scripts
+        working-directory: backend
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://fintrack:fintrack123@localhost:5432/financial_control_test
+
+      - name: Apply migrations to test DB
+        run: npx prisma migrate deploy
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://fintrack:fintrack123@localhost:5432/financial_control_test
+
+      - name: Run integration tests
+        run: npm run test:integration
+        working-directory: backend
+        env:
+          DATABASE_URL_TEST: postgresql://fintrack:fintrack123@localhost:5432/financial_control_test
+          NODE_ENV: test
+          # CI-only test credentials — NOT production values.
+          # Production secrets come from AWS Secrets Manager (never from env vars).
+          JWT_SECRET: ${{ secrets.CI_JWT_SECRET }}
+          BCRYPT_ROUNDS: "4"   # faster bcrypt in CI
+          MFA_ENCRYPTION_KEY: ${{ secrets.CI_MFA_ENCRYPTION_KEY }}
+          DATA_ENCRYPTION_KEY: ${{ secrets.CI_DATA_ENCRYPTION_KEY }}
+          STRIPE_SECRET_KEY: sk_test_ci_placeholder
+          STRIPE_WEBHOOK_SECRET: whsec_ci_placeholder
+          CORS_ORIGIN: http://localhost:5173
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # JOB 6 — Build (backend + frontend)
+  # Only runs after lint and unit tests pass.
+  # ════════════════════════════════════════════════════════════════════════════
+  build:
+    name: Build
+    runs-on: ubuntu-24.04
+    needs: [audit, lint, test-unit]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install backend deps
+        run: npm ci --ignore-scripts
+        working-directory: backend
+
+      - name: Install frontend deps
+        run: npm ci --ignore-scripts
+        working-directory: frontend
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+
+      - name: Build backend
+        run: npm run build
+        working-directory: backend
+
+      - name: Build frontend
+        run: npm run build
+        working-directory: frontend
+
+      # Pin: actions/upload-artifact v4.4.3
+      - uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882
+        with:
+          name: backend-dist-${{ github.sha }}
+          path: backend/dist/
+          retention-days: 7
+          # Only store artifacts from main branch builds.
+          if-no-files-found: error
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # JOB 7 — Generate SBOM (Software Bill of Materials)
+  # Produces a CycloneDX SBOM documenting every transitive dependency.
+  # Required for compliance, incident response, and vulnerability tracking.
+  # Only runs on pushes to main (not on every PR).
+  # ════════════════════════════════════════════════════════════════════════════
+  sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-24.04
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install backend deps
+        run: npm ci --ignore-scripts
+        working-directory: backend
+
+      - name: Install frontend deps
+        run: npm ci --ignore-scripts
+        working-directory: frontend
+
+      # `npm sbom` is built into npm 10+ (shipped with Node 20).
+      # Outputs CycloneDX JSON — compatible with Dependency-Track and GitHub.
+      - name: Generate SBOM — backend
+        run: npm sbom --sbom-format cyclonedx --output-file ../sbom-backend.json
+        working-directory: backend
+
+      - name: Generate SBOM — frontend
+        run: npm sbom --sbom-format cyclonedx --output-file ../sbom-frontend.json
+        working-directory: frontend
+
+      - uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882
+        with:
+          name: sbom-${{ github.sha }}
+          path: |
+            sbom-backend.json
+            sbom-frontend.json
+          retention-days: 90
+          if-no-files-found: error

@@ -256,7 +256,7 @@ function ConfirmedVsEstimated({ data }: { data: MonthlyProjection }) {
             )}
             {futureIncome > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Recorrências futuras</span>
+                <span className="text-muted-foreground">Receitas futuras previstas</span>
                 <span className="font-medium text-emerald-600">{formatCurrency(futureIncome)}</span>
               </div>
             )}
@@ -279,7 +279,7 @@ function ConfirmedVsEstimated({ data }: { data: MonthlyProjection }) {
             )}
             {futureExpense > 0 && (
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Recorrências futuras</span>
+                <span className="text-muted-foreground">Despesas futuras previstas</span>
                 <span className="font-medium text-rose-600">{formatCurrency(futureExpense)}</span>
               </div>
             )}
@@ -310,7 +310,7 @@ function ConfirmedVsEstimated({ data }: { data: MonthlyProjection }) {
             <TrendingDown className="w-4 h-4" />
             Estimado
           </CardTitle>
-          <p className="text-xs text-muted-foreground">Projeção baseada no comportamento histórico</p>
+          <p className="text-xs text-muted-foreground">Média diária dos últimos 30 dias × dias restantes</p>
         </CardHeader>
         <CardContent className="pb-4 space-y-3">
           <div className="space-y-2">
@@ -489,7 +489,7 @@ function IncomeBreakdownModal({
             defaultOpen
           />
           <AccordionGroup
-            title="Recorrências futuras no mês"
+            title="Receitas futuras previstas no mês"
             items={incomeBreakdown.recurringItems}
             color="text-emerald-600"
           />
@@ -529,7 +529,7 @@ function ExpenseBreakdownModal({
             defaultOpen
           />
           <AccordionGroup
-            title="Recorrências futuras no mês"
+            title="Despesas futuras previstas no mês"
             items={recurringItems}
             color="text-rose-600"
           />
@@ -681,6 +681,18 @@ export default function ForecastPage() {
             />
           </div>
 
+          {/* ── End-of-month convergence notice ── */}
+          {data.daysRemaining === 0 && (
+            <div className="flex items-start gap-3 rounded-xl border border-blue-200 dark:border-blue-800/50 bg-blue-50 dark:bg-blue-950/30 px-4 py-3">
+              <Info className="w-4 h-4 text-blue-500 dark:text-blue-400 shrink-0 mt-0.5" />
+              <p className="text-sm text-blue-700 dark:text-blue-300 leading-relaxed">
+                <span className="font-semibold">Último dia do mês</span> — os três cenários mostram o mesmo valor pois não restam dias para estimar despesas variáveis{' '}
+                <span className="opacity-75">(média diária × 0 dias = R$ 0,00)</span>.
+                Os diferenciais entre cenários voltam a aparecer a partir do início do próximo mês.
+              </p>
+            </div>
+          )}
+
           {/* ── Selected scenario summary ── */}
           <ScenarioSummary
             scenario={scenario}
@@ -733,7 +745,7 @@ export default function ForecastPage() {
             </CardHeader>
             <CardContent className="pb-4">
               <ul className="text-xs text-slate-500 space-y-1 list-disc list-inside">
-                <li><span className="font-medium text-slate-600 dark:text-slate-400">Otimista</span> — receita confirmada (realizada + recorrências futuras) e somente despesas comprometidas (sem variáveis)</li>
+                <li><span className="font-medium text-slate-600 dark:text-slate-400">Otimista</span> — receita confirmada (realizada + futuras previstas) e somente despesas comprometidas (sem variáveis)</li>
                 <li><span className="font-medium text-slate-600 dark:text-slate-400">Realista</span> — receita confirmada + despesas comprometidas + 100% da estimativa de variáveis (média diária × dias restantes)</li>
                 <li><span className="font-medium text-slate-600 dark:text-slate-400">Pessimista</span> — somente receita já realizada + despesas comprometidas + 130% da estimativa de variáveis</li>
                 <li><span className="font-medium text-slate-600 dark:text-slate-400">Projeção por conta</span> — saldo atual + entradas/saídas recorrentes previstas (exceto cartões de crédito e contas de investimento)</li>

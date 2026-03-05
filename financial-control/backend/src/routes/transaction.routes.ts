@@ -15,22 +15,23 @@ import {
   pauseTemplate,
 } from '../controllers/transaction.controller'
 import { requireFeature } from '../middlewares/planGate.middleware'
+import { ownedResource } from '../middlewares/ownership.middleware'
 
 export const transactionRoutes = Router()
 
 transactionRoutes.use(authenticate)
 
-transactionRoutes.get('/tags',           listTags)
-transactionRoutes.get('/suggest',        suggestCategory)
-transactionRoutes.post('/split',         createSplitTransaction)
+transactionRoutes.get('/tags',    listTags)
+transactionRoutes.get('/suggest', suggestCategory)
+transactionRoutes.post('/split',  createSplitTransaction)
 
-transactionRoutes.get('/',              listTransactions)
-transactionRoutes.post('/',             createTransaction)
-transactionRoutes.put('/:id',           updateTransaction)
-transactionRoutes.delete('/:id',        deleteTransaction)
-transactionRoutes.patch('/:id/skip',    requireFeature('RECURRING_TRANSACTIONS'), skipInstance)
-transactionRoutes.patch('/:id/pause',   requireFeature('RECURRING_TRANSACTIONS'), pauseTemplate)
+transactionRoutes.get('/',    listTransactions)
+transactionRoutes.post('/',   createTransaction)
+transactionRoutes.put('/:id',    ownedResource('transaction'), updateTransaction)
+transactionRoutes.delete('/:id', ownedResource('transaction'), deleteTransaction)
+transactionRoutes.patch('/:id/skip',  requireFeature('RECURRING_TRANSACTIONS'), ownedResource('transaction'), skipInstance)
+transactionRoutes.patch('/:id/pause', requireFeature('RECURRING_TRANSACTIONS'), ownedResource('transaction'), pauseTemplate)
 
-transactionRoutes.post('/:id/attachments',        addAttachment)
-transactionRoutes.get('/:id/attachments/:aid',    getAttachment)
-transactionRoutes.delete('/:id/attachments/:aid', deleteAttachment)
+transactionRoutes.post('/:id/attachments',        ownedResource('transaction'), addAttachment)
+transactionRoutes.get('/:id/attachments/:aid',    ownedResource('transaction'), getAttachment)
+transactionRoutes.delete('/:id/attachments/:aid', ownedResource('transaction'), deleteAttachment)

@@ -104,18 +104,21 @@ export async function listStatements(userId: string, cardId: string, prisma: Pri
     orderBy: { periodStart: 'desc' },
   })
 
-  // Auto-mark overdue
+  // Auto-update status: OPEN→CLOSED when closing date passed; CLOSED/OPEN→OVERDUE when due date passed with balance
   const now = new Date()
-  const updates = statements
-    .filter(
-      (s) =>
-        s.status !== 'PAID' &&
-        s.dueDate < now &&
-        Number(s.totalSpent) - Number(s.totalPaid) > 0 &&
-        s.status !== 'OVERDUE',
-    )
-    .map((s) => prisma.cardStatement.update({ where: { id: s.id }, data: { status: 'OVERDUE' } }))
-  if (updates.length) await Promise.all(updates)
+  const autoUpdates = statements
+    .filter((s) => s.status !== 'PAID')
+    .flatMap((s) => {
+      const openBal = Number(s.totalSpent) - Number(s.totalPaid)
+      if (openBal > 0 && s.dueDate < now && s.status !== 'OVERDUE') {
+        return [prisma.cardStatement.update({ where: { id: s.id }, data: { status: 'OVERDUE' } })]
+      }
+      if (s.status === 'OPEN' && s.closingDate < now) {
+        return [prisma.cardStatement.update({ where: { id: s.id }, data: { status: 'CLOSED' } })]
+      }
+      return []
+    })
+  if (autoUpdates.length) await Promise.all(autoUpdates)
 
   return statements.map((s) => ({
     ...s,

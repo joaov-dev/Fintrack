@@ -125,6 +125,31 @@ export async function createCheckoutSession(req: AuthRequest, res: Response) {
     return res.status(400).json({ error: 'Preço inválido ou não configurado no Stripe' })
   }
 
+  // ── Detect existing active subscription and perform upgrade if needed ────────
+  const existingSub = await prisma.subscription.findFirst({
+    where: { userId, status: { in: ['TRIALING', 'ACTIVE', 'PAST_DUE'] } },
+    include: { plan: true },
+    orderBy: { updatedAt: 'desc' },
+  })
+
+  if (existingSub?.stripeSubscriptionId) {
+    if (existingSub.plan.code === price.plan.code) {
+      return res.status(400).json({ error: 'Você já possui este plano ativo' })
+    }
+
+    // Different plan → upgrade/downgrade by swapping the price on the existing subscription
+    const stripeClient = getStripeClient()
+    const stripeSub = await stripeClient.subscriptions.retrieve(existingSub.stripeSubscriptionId)
+    const existingItem = stripeSub.items.data[0]
+    const updatedSub = await stripeClient.subscriptions.update(existingSub.stripeSubscriptionId, {
+      items: [{ id: existingItem.id, price: price.stripePriceId }],
+      proration_behavior: 'create_prorations',
+      metadata: { userId, planCode: price.plan.code, priceId: price.id },
+    })
+    await persistFromStripeSubscription(updatedSub)
+    return res.json({ upgraded: true })
+  }
+
   const billingCustomer = await getOrCreateBillingCustomer(userId)
   const stripe = getStripeClient()
 

@@ -1,19 +1,28 @@
 import { useState } from 'react'
-import { Plus, Pencil, Archive, CreditCard as CreditCardIcon, AlertCircle } from 'lucide-react'
+import { Plus, Pencil, Archive, CreditCard as CreditCardIcon, AlertCircle, Receipt, Loader2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { CreditCardModal } from '@/components/creditCards/CreditCardModal'
+import { CardPaymentModal } from '@/components/creditCards/CardPaymentModal'
 import { useCreditCards } from '@/hooks/useCreditCards'
+import { useAccounts } from '@/hooks/useAccounts'
+import { useCategories } from '@/hooks/useCategories'
 import { useToast } from '@/hooks/use-toast'
-import { CreditCard } from '@/types'
+import { CreditCard, CardStatement } from '@/types'
 import { formatCurrency } from '@/lib/utils'
 import { cn } from '@/lib/utils'
+import { api } from '@/services/api'
 
 export default function CreditCardsPage() {
-  const { cards, isLoading, create, update, archive } = useCreditCards()
+  const { cards, isLoading, create, update, archive, refetch } = useCreditCards()
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<CreditCard | null>(null)
+  const [payingCardId, setPayingCardId] = useState<string | null>(null)
+  const [payingStatement, setPayingStatement] = useState<CardStatement | null>(null)
+  const [loadingPayCardId, setLoadingPayCardId] = useState<string | null>(null)
+  const { accounts } = useAccounts()
+  const { categories } = useCategories()
   const { toast } = useToast()
 
   const totalOpenBalance = cards.reduce((s, c) => s + c.openBalance, 0)
@@ -41,6 +50,49 @@ export default function CreditCardsPage() {
     } catch {
       toast({ title: 'Erro ao arquivar cartão', variant: 'destructive' })
     }
+  }
+
+  const handleQuickPay = async (cardId: string) => {
+    setLoadingPayCardId(cardId)
+    try {
+      const { data: statements } = await api.get(`/credit-cards/${cardId}/statements`)
+      const allUnpaid = (statements as CardStatement[])
+        .filter((s) => s.status !== 'PAID' && s.totalSpent - s.totalPaid > 0)
+        .sort((a, b) => new Date(b.periodStart).getTime() - new Date(a.periodStart).getTime())
+
+      // Only CLOSED statements are within the payment window
+      const payable = allUnpaid.filter((s) => s.status === 'CLOSED')
+
+      if (payable.length > 0) {
+        setPayingCardId(cardId)
+        setPayingStatement(payable[0])
+        return
+      }
+
+      // Explain why payment isn't available
+      const latest = allUnpaid[0]
+      if (!latest) {
+        toast({ title: 'Nenhuma fatura em aberto' })
+      } else if (latest.status === 'OPEN') {
+        const closing = new Date(latest.closingDate).toLocaleDateString('pt-BR')
+        toast({ title: 'Fatura ainda não fechou', description: `O fechamento ocorre em ${closing}` })
+      } else if (latest.status === 'OVERDUE') {
+        toast({ title: 'Prazo de pagamento encerrado', description: 'O vencimento desta fatura já passou', variant: 'destructive' })
+      }
+    } catch {
+      toast({ title: 'Erro ao carregar fatura', variant: 'destructive' })
+    } finally {
+      setLoadingPayCardId(null)
+    }
+  }
+
+  const handlePay = async (payload: { amount: number; fromAccountId: string; date: string; categoryId: string }) => {
+    if (!payingCardId || !payingStatement) return
+    await api.post(`/credit-cards/${payingCardId}/statements/${payingStatement.id}/pay`, payload)
+    await refetch()
+    toast({ title: 'Pagamento registrado com sucesso' })
+    setPayingStatement(null)
+    setPayingCardId(null)
   }
 
   const openCreate = () => { setEditing(null); setModalOpen(true) }
@@ -108,6 +160,8 @@ export default function CreditCardsPage() {
               card={card}
               onEdit={() => openEdit(card)}
               onArchive={() => handleArchive(card)}
+              onPay={() => handleQuickPay(card.id)}
+              isPayLoading={loadingPayCardId === card.id}
             />
           ))}
         </div>
@@ -119,6 +173,15 @@ export default function CreditCardsPage() {
         onSave={handleSave}
         card={editing}
       />
+
+      <CardPaymentModal
+        open={!!payingStatement}
+        onClose={() => { setPayingStatement(null); setPayingCardId(null) }}
+        statement={payingStatement}
+        accounts={accounts}
+        categories={categories}
+        onPay={handlePay}
+      />
     </div>
   )
 }
@@ -127,10 +190,14 @@ function CreditCardCard({
   card,
   onEdit,
   onArchive,
+  onPay,
+  isPayLoading,
 }: {
   card: CreditCard
   onEdit: () => void
   onArchive: () => void
+  onPay: () => void
+  isPayLoading: boolean
 }) {
   const utilizationPct = Math.min(card.utilizationPercent * 100, 100)
   const isHigh = card.utilizationPercent >= 0.80
@@ -209,13 +276,31 @@ function CreditCardCard({
           </div>
         )}
 
-        {/* Detail link */}
-        <Link
-          to={`/credit-cards/${card.id}`}
-          className="mt-3 flex items-center justify-center w-full text-xs text-primary font-medium hover:underline"
-        >
-          Ver faturas →
-        </Link>
+        {/* Footer actions */}
+        <div className="mt-3 flex gap-2">
+          {card.openBalance > 0 && (
+            <button
+              onClick={onPay}
+              disabled={isPayLoading}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-primary text-white hover:opacity-90 disabled:opacity-60 active:scale-95 transition-all"
+            >
+              {isPayLoading
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <Receipt className="w-3.5 h-3.5" />
+              }
+              Pagar fatura
+            </button>
+          )}
+          <Link
+            to={`/credit-cards/${card.id}`}
+            className={cn(
+              'flex items-center justify-center px-3 py-2 rounded-lg text-xs font-medium border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors',
+              card.openBalance <= 0 && 'flex-1',
+            )}
+          >
+            Ver faturas →
+          </Link>
+        </div>
       </CardContent>
     </Card>
   )

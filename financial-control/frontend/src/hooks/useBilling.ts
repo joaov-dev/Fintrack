@@ -59,7 +59,10 @@ export function useBillingPlans() {
   return { plans, isLoading, reload: load }
 }
 
-export async function startCheckout(planCode: PlanCode, billingCycle: BillingCycle) {
+export async function startCheckout(
+  planCode: PlanCode,
+  billingCycle: BillingCycle,
+): Promise<{ upgraded?: boolean; url?: string; id?: string }> {
   const origin = window.location.origin
   const { data } = await api.post('/billing/checkout-session', {
     planCode,
@@ -71,6 +74,8 @@ export async function startCheckout(planCode: PlanCode, billingCycle: BillingCyc
   if (data?.url) {
     window.location.href = data.url
   }
+
+  return data ?? {}
 }
 
 export async function openBillingPortal() {

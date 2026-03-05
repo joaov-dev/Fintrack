@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { AuthRequest } from '../middlewares/auth.middleware'
 import { prisma } from '../services/prisma'
 import { suggestFromRules } from '../services/categorizationRules.service'
+import { audit } from '../lib/audit'
 
 const ruleSchema = z.object({
   name:       z.string().min(1).max(100),
@@ -69,6 +70,7 @@ export async function deleteRule(req: AuthRequest, res: Response) {
   if (!rule) return res.status(404).json({ error: 'Regra não encontrada' })
 
   await prisma.categorizationRule.delete({ where: { id } })
+  audit('RULE_DELETE', req.userId!, req, { ruleId: id, name: rule.name })
   return res.status(204).send()
 }
 

@@ -67,6 +67,7 @@ model User {
   usageCounters          UsageCounter[]
   subscriptionEvents     SubscriptionEvent[]
   billingProfile         BillingCustomer?       @relation("UserBillingProfile")
+  consentRecords         ConsentRecord[]
 
   @@map("users")
 }
@@ -673,6 +674,164 @@ enum FeatureKey {
   ACCOUNTS_LIMIT
   CREDIT_CARDS_LIMIT
   TRANSACTIONS_MONTHLY_LIMIT
+}
+
+// ── LGPD / GDPR Data Governance ───────────────────────────────────────────────
+
+// Every consent is stored as an immutable append-only record.
+// Consent state = the most-recent ConsentRecord for (userId, consentType).
+// Immutability enforced by trigger from migration 20260305000000_add_lgpd.
+model ConsentRecord {
+  id          String      @id @default(cuid())
+  userId      String
+  consentType ConsentType
+  version     String      // policy version, e.g. "1.0"
+  granted     Boolean     // true = given, false = withdrawn
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime    @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, consentType, createdAt])
+  @@map("consent_records")
+}
+
+enum ConsentType {
+  TERMS_OF_SERVICE    // mandatory — service cannot be used without it
+  PRIVACY_POLICY      // mandatory
+  MARKETING_EMAIL     // optional — promotional emails
+  ANALYTICS           // optional — usage analytics / insights
+}
+
+// Soft-delete tombstone: user requested erasure; hard delete runs after 30 days.
+// Email kept in suppression list to prevent re-registration during grace period.
+model DeletedAccount {
+  id          String    @id @default(cuid())
+  userId      String    @unique // original users.id (no FK — user row may be gone)
+  email       String    @unique // suppression list
+  requestedAt DateTime  @default(now())
+  scheduledAt DateTime  // requestedAt + 30 days
+  completedAt DateTime? // set when retentionService hard-deletes the user
+
+  @@index([scheduledAt])
+  @@map("deleted_accounts")
+}
+
+// Internal breach tracking for LGPD Art. 48 compliance (72h ANPD notification).
+model BreachRecord {
+  id               String         @id @default(cuid())
+  title            String
+  description      String
+  severity         BreachSeverity
+  affectedCount    Int?
+  dataTypes        String[]       // e.g. ["email","transaction_data","ip_address"]
+  detectedAt       DateTime
+  containedAt      DateTime?
+  anpdNotifiedAt   DateTime?
+  usersNotifiedAt  DateTime?
+  status           BreachStatus   @default(DETECTED)
+  notes            String?
+  createdBy        String         // userId of admin who created the record
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([status, detectedAt])
+  @@map("breach_records")
+}
+
+enum BreachSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum BreachStatus {
+  DETECTED
+  INVESTIGATING
+  CONTAINED
+  NOTIFIED_ANPD
+  NOTIFIED_USERS
+  CLOSED
+}
+
+// ── Auth Security ──────────────────────────────────────────────────────────────
+
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  email     String
+  ip        String?
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+  @@index([ip, createdAt])
+  @@map("login_attempts")
+}
+
+model UsedMfaToken {
+  jti       String   @id
+  expiresAt DateTime
+
+  @@index([expiresAt])
+  @@map("used_mfa_tokens")
+}
+
+model UsedTotpCode {
+  id     String   @id @default(cuid())
+  userId String
+  code   String
+  usedAt DateTime @default(now())
+
+  @@unique([userId, code])
+  @@index([usedAt])
+  @@map("used_totp_codes")
+}
+
+model AuthEvent {
+  id        String   @id @default(cuid())
+  userId    String?
+  email     String?
+  event     String
+  ip        String?
+  userAgent String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([email, createdAt])
+  @@index([event, createdAt])
+  @@map("auth_events")
+  // Immutability enforced by DB trigger: prevent_audit_modification()
+  // See migration 20260304000000_add_audit_log
+}
+
+// ── Business-operation audit trail ────────────────────────────────────────────
+// Append-only; immutability enforced by PostgreSQL trigger (see migration).
+// Captures CREATE / UPDATE / DELETE on financial resources.
+// Separate from AuthEvent (auth flow) for cleaner querying and IAM separation.
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  action     String   // e.g. TRANSACTION_CREATE, ACCOUNT_UPDATE, GOAL_DELETE
+  resource   String   // e.g. 'transaction', 'account', 'goal'
+  resourceId String?  // affected record ID (null for bulk operations)
+  requestId  String?  // correlates with HTTP access log (X-Request-Id header)
+  ip         String?
+  userAgent  String?
+  before     Json?    // resource state before mutation (UPDATE/DELETE only)
+  after      Json?    // resource state after mutation (CREATE/UPDATE only)
+  metadata   Json?    // additional context (e.g. { reason: 'user request' })
+  createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([resource, resourceId])
+  @@index([action, createdAt])
+  @@index([requestId])
+  @@map("audit_logs")
+  // Immutability enforced by DB trigger: prevent_audit_modification()
 }
 
 // ── Tags (many-to-many com Transaction) ───────────────────────────────────────

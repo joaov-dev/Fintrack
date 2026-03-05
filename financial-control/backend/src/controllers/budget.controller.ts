@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { AuthRequest } from '../middlewares/auth.middleware'
 import { prisma } from '../services/prisma'
 import { Decimal } from '@prisma/client/runtime/library'
+import { audit } from '../lib/audit'
 
 const budgetSchema = z.object({
   categoryId: z.string().cuid(),
@@ -98,5 +99,6 @@ export async function deleteBudget(req: AuthRequest, res: Response) {
   if (!budget) return res.status(404).json({ error: 'Orçamento não encontrado' })
 
   await prisma.budget.delete({ where: { id } })
+  audit('BUDGET_DELETE', req.userId!, req, { budgetId: id })
   return res.status(204).send()
 }

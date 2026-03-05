@@ -2,6 +2,7 @@ import { Response } from 'express'
 import { z } from 'zod'
 import { AuthRequest } from '../middlewares/auth.middleware'
 import { prisma } from '../services/prisma'
+import { audit } from '../lib/audit'
 
 const categorySchema = z.object({
   name: z.string().min(1),
@@ -55,5 +56,6 @@ export async function deleteCategory(req: AuthRequest, res: Response) {
   }
 
   await prisma.category.delete({ where: { id } })
+  audit('CATEGORY_DELETE', req.userId!, req, { categoryId: id, name: category.name })
   return res.status(204).send()
 }

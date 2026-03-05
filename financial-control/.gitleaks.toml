@@ -1,0 +1,147 @@
+##############################################################################
+# Gitleaks Configuration
+# https://github.com/gitleaks/gitleaks#configuration
+#
+# Scans the git history and working tree for accidentally committed secrets:
+# API keys, tokens, passwords, private keys, connection strings.
+#
+# Rules follow a "deny by default" model: gitleaks ships with a large set of
+# built-in rules (hundreds of patterns). This file:
+#   1. Adds DominaHub-specific patterns (Stripe, JWT, AWS, etc.)
+#   2. Allowlists known-safe occurrences (example files, test fixtures)
+#
+# Usage:
+#   gitleaks detect --config .gitleaks.toml --source . -v
+#   gitleaks protect --config .gitleaks.toml --staged       # pre-commit hook
+##############################################################################
+
+title = "DominaHub Gitleaks Configuration"
+
+[extend]
+# Inherit all upstream built-in rules (generic high-entropy strings, common
+# secret patterns, cloud provider tokens, etc.). We layer on top.
+useDefault = true
+
+##############################################################################
+# Custom rules — DominaHub-specific patterns not covered by built-ins
+##############################################################################
+
+[[rules]]
+id          = "dominahub-jwt-secret"
+description = "Hardcoded JWT signing secret"
+regex       = '''(?i)JWT_SECRET\s*[=:]\s*["']?[A-Za-z0-9+/=_-]{32,}["']?'''
+tags        = ["jwt", "secret", "auth"]
+
+[[rules]]
+id          = "dominahub-mfa-key"
+description = "Hardcoded MFA encryption key (AES-256-GCM hex key)"
+regex       = '''(?i)(MFA_ENCRYPTION_KEY|DATA_ENCRYPTION_KEY)\s*[=:]\s*["']?[0-9a-f]{64}["']?'''
+tags        = ["encryption", "mfa", "aes"]
+
+[[rules]]
+id          = "dominahub-database-url"
+description = "PostgreSQL connection string with embedded credentials"
+regex       = '''postgresql://[^:]+:[^@]+@[^/\s"']+/\w+'''
+tags        = ["database", "postgresql", "credentials"]
+
+[[rules]]
+id          = "dominahub-stripe-secret"
+description = "Stripe secret key (live or test)"
+regex       = '''sk_(live|test)_[0-9a-zA-Z]{24,}'''
+tags        = ["stripe", "payment", "api-key"]
+
+[[rules]]
+id          = "dominahub-stripe-webhook"
+description = "Stripe webhook signing secret"
+regex       = '''whsec_[0-9a-zA-Z]{32,}'''
+tags        = ["stripe", "webhook", "secret"]
+
+[[rules]]
+id          = "dominahub-stripe-restricted"
+description = "Stripe restricted API key"
+regex       = '''rk_(live|test)_[0-9a-zA-Z]{24,}'''
+tags        = ["stripe", "api-key"]
+
+[[rules]]
+id          = "dominahub-aws-kms-key"
+description = "AWS KMS Key ID reference potentially containing account info"
+regex       = '''arn:aws:kms:[a-z0-9-]+:\d{12}:key/[0-9a-f-]{36}'''
+tags        = ["aws", "kms", "arn"]
+
+[[rules]]
+id          = "dominahub-bcrypt-hash"
+description = "Bcrypt password hash — should never be in source code"
+regex       = '''\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}'''
+tags        = ["bcrypt", "password", "hash"]
+
+[[rules]]
+id          = "dominahub-private-key-pem"
+description = "PEM-encoded private key block"
+regex       = '''-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----'''
+tags        = ["private-key", "pem", "crypto"]
+
+[[rules]]
+id          = "dominahub-totp-secret"
+description = "Base32-encoded TOTP secret (32-char otplib format)"
+regex       = '''(?i)(totp|mfa|otp)[_-]?secret\s*[=:]\s*["']?[A-Z2-7]{32,}["']?'''
+tags        = ["totp", "mfa", "secret"]
+
+##############################################################################
+# Allowlist — known-safe occurrences
+#
+# Use allowlists sparingly. Each entry must have a justification comment.
+# Prefer fixing the actual file over adding allowlist entries.
+##############################################################################
+
+[allowlist]
+description = "Known-safe patterns — reviewed and approved"
+
+# Rule-level: regexes that globally skip certain values
+regexes = [
+  # Placeholder values used in documentation and example configs.
+  '''(your[-_]?secret[-_]?here|INSERT[-_]YOUR[-_]SECRET|placeholder|REPLACE[-_]ME|xxx+|000+)''',
+
+  # The zero-key used in integration test fixtures (intentionally weak).
+  '''0{64}''',
+
+  # CI test credentials are referenced by name in workflow files, not their values.
+  '''\$\{\{\s*secrets\.(CI_|GITHUB_)''',
+]
+
+# Specific paths to exclude entirely from scanning.
+paths = [
+  # npm lockfiles contain package integrity hashes that look like secrets.
+  '''package-lock\.json''',
+
+  # Prisma migration SQL files may contain constraint names that trip patterns.
+  '''prisma/migrations/.*\.sql''',
+
+  # Test fixtures intentionally use weak/fake credentials.
+  '''src/__tests__/''',
+  '''__fixtures__/''',
+  '''__mocks__/''',
+  '''\.test\.(ts|js)$''',
+  '''\.spec\.(ts|js)$''',
+]
+
+# Specific commits to skip (e.g. a historical commit that pre-dates this policy
+# and whose secret has already been rotated). Format: full 40-char SHA.
+commits = [
+  # Example: "abc123...def456"  # Rotated 2026-01-01 — original dev bootstrap commit
+]
+
+##############################################################################
+# Pre-commit hook integration
+#
+# Add to .git/hooks/pre-commit or use `gitleaks protect --staged`:
+#
+#   #!/bin/sh
+#   gitleaks protect --config .gitleaks.toml --staged -v
+#   if [ $? -ne 0 ]; then
+#     echo "Gitleaks: potential secret detected. Commit blocked."
+#     exit 1
+#   fi
+#
+# Or use the Husky integration (install husky first):
+#   npx husky add .husky/pre-commit "gitleaks protect --config .gitleaks.toml --staged -v"
+##############################################################################

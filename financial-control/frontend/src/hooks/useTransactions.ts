@@ -12,17 +12,35 @@ interface Filters {
   isRecurring?: boolean
   startDate?: string
   endDate?: string
+  /** Max records to fetch per page (server cap: 100). Default: 100. */
+  limit?: number
+  page?: number
+}
+
+interface PaginatedMeta {
+  page: number
+  limit: number
+  total: number
+  hasMore: boolean
 }
 
 export function useTransactions(filters: Filters = {}) {
   const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [meta, setMeta] = useState<PaginatedMeta | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   const fetch = useCallback(async () => {
     setIsLoading(true)
     try {
       const { data } = await api.get('/transactions', { params: filters })
-      setTransactions(data)
+      // Support both paginated { data, meta } and legacy flat array responses
+      if (Array.isArray(data)) {
+        setTransactions(data)
+        setMeta(null)
+      } else {
+        setTransactions(data.data ?? [])
+        setMeta(data.meta ?? null)
+      }
     } finally {
       setIsLoading(false)
     }
@@ -47,5 +65,5 @@ export function useTransactions(filters: Filters = {}) {
     await fetch()
   }
 
-  return { transactions, isLoading, refetch: fetch, create, update, remove }
+  return { transactions, meta, isLoading, refetch: fetch, create, update, remove }
 }

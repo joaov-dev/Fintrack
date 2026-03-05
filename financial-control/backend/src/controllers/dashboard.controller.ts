@@ -4,6 +4,7 @@ import { prisma } from '../services/prisma'
 import { Decimal } from '@prisma/client/runtime/library'
 import { calcAccountBalance, calcNetWorth } from '../services/netWorthService'
 import { getCreditCardSummary } from '../services/creditCardService'
+import { generateRecurringForMonth } from '../services/recurringService'
 
 function toNumber(d: Decimal) {
   return Number(d)
@@ -17,9 +18,12 @@ export async function getSummary(req: AuthRequest, res: Response) {
   const start = new Date(year, month - 1, 1)
   const end = new Date(year, month, 0, 23, 59, 59, 999)
 
-  // Monthly transactions (exclude transfers and card bill payments)
+  // Materialize recurring instances for this month before any query
+  await generateRecurringForMonth(req.userId!, month, year, prisma)
+
+  // Monthly transactions (exclude transfers, card bill payments and skipped recurring instances)
   const transactions = await prisma.transaction.findMany({
-    where: { userId: req.userId, date: { gte: start, lte: end }, transferId: null, isCardPayment: { not: true } },
+    where: { userId: req.userId, date: { gte: start, lte: end }, transferId: null, isCardPayment: { not: true }, isSkipped: { not: true } },
     include: { category: true },
   })
 
@@ -49,7 +53,7 @@ export async function getSummary(req: AuthRequest, res: Response) {
     const mEnd = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999)
 
     const mTx = await prisma.transaction.findMany({
-      where: { userId: req.userId, date: { gte: mStart, lte: mEnd }, transferId: null, isCardPayment: { not: true } },
+      where: { userId: req.userId, date: { gte: mStart, lte: mEnd }, transferId: null, isCardPayment: { not: true }, isSkipped: { not: true } },
       select: { type: true, amount: true },
     })
 
@@ -122,6 +126,7 @@ export async function getSummary(req: AuthRequest, res: Response) {
           date: { gte: start, lte: end },
           transferId: null,
           isCardPayment: { not: true },
+          isSkipped: { not: true },
         },
         _sum: { amount: true },
       })

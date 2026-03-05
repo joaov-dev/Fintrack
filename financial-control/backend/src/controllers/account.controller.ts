@@ -4,6 +4,7 @@ import { AuthRequest } from '../middlewares/auth.middleware'
 import { prisma } from '../services/prisma'
 import { Decimal } from '@prisma/client/runtime/library'
 import { calcAccountBalance } from '../services/netWorthService'
+import { audit } from '../lib/audit'
 
 const accountSchema = z.object({
   name: z.string().min(1),
@@ -100,5 +101,6 @@ export async function deleteAccount(req: AuthRequest, res: Response) {
   }
 
   await prisma.account.delete({ where: { id } })
+  audit('ACCOUNT_DELETE', req.userId!, req, { accountId: id, name: account.name })
   return res.status(204).send()
 }

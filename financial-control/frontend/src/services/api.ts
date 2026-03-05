@@ -1,7 +1,7 @@
 import axios from 'axios'
 
 export const api = axios.create({
-  baseURL: '/api',
+  baseURL: '/api/v1',
   headers: { 'Content-Type': 'application/json' },
   withCredentials: true, // send refresh_token cookie automatically
 })
@@ -17,9 +17,14 @@ export function getAccessToken(): string | null {
   return _accessToken
 }
 
-// ── Request interceptor: attach access token ───────────────────────────────────
+// ── Request interceptor: attach access token + CSRF defense ──────────────────
+// X-Requested-With proves the request comes from our JS (browsers cannot set
+// this header in cross-origin <form> or <img> requests without a CORS preflight).
+// Combined with SameSite=Strict on the refresh cookie and Bearer-token
+// authentication, this provides defense-in-depth against CSRF attacks.
 api.interceptors.request.use((config) => {
   if (_accessToken) config.headers.Authorization = `Bearer ${_accessToken}`
+  config.headers['X-Requested-With'] = 'XMLHttpRequest'
   return config
 })
 

@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client'
+import { generateRecurringForMonth } from './recurringService'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -106,31 +107,45 @@ export async function getMonthlyProjection(
   const daysRemaining = totalDays - todayDay
   const daysPassedSafe = Math.max(todayDay, 1)
 
-  const [realizedTxs, futureRecurringTxs, allMonthTxs, allActiveLiabilities, ccDueStatements, accounts, txAggregates] = await Promise.all([
-    // 1. Transactions realized up to today (excl. transfers)
+  // Materialize recurring instances for the current month before any query
+  // month+1 because generateRecurringForMonth uses 1-indexed months
+  await generateRecurringForMonth(userId, month + 1, year, prisma)
+
+  // Rolling 30-day lookback window for variable expense average
+  const thirtyDaysAgo = new Date(now)
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+
+  const [realizedTxs, futureTxs, allMonthTxs, allActiveLiabilities, ccDueStatements, accounts, txAggregates, rolling30Txs] = await Promise.all([
+    // 1. Transactions realized up to today (excl. transfers, card payments, skipped instances)
     prisma.transaction.findMany({
       where: {
         userId,
         date: { gte: startOfMonth, lte: today },
         transferId: null,
+        isCardPayment: { not: true },
+        isSkipped: { not: true },
       },
       select: { type: true, amount: true, isRecurring: true, parentId: true, description: true, date: true },
     }),
-    // 2. Future recurring transactions in this month (excl. transfers)
+    // 2. ALL future transactions remaining in this month (recurring + one-off, excl. transfers/card payments/skipped)
+    //    Previously only fetched isRecurring=true templates, which missed child instances and one-time future entries.
     prisma.transaction.findMany({
       where: {
         userId,
-        isRecurring: true,
         transferId: null,
+        isCardPayment: { not: true },
+        isSkipped: { not: true },
         date: { gt: today, lte: endOfMonth },
       },
-      select: { type: true, amount: true, description: true, date: true, accountId: true },
+      select: { type: true, amount: true, description: true, date: true, accountId: true, isRecurring: true, parentId: true },
     }),
-    // 3. All transactions this month for calendar (realized + future instances already created)
+    // 3. All transactions this month for calendar (realized + future, excl. transfers/card payments/skipped)
     prisma.transaction.findMany({
       where: {
         userId,
         transferId: null,
+        isCardPayment: { not: true },
+        isSkipped: { not: true },
         date: { gte: startOfMonth, lte: endOfMonth },
       },
       select: { type: true, amount: true, description: true, date: true, isRecurring: true, parentId: true },
@@ -168,6 +183,23 @@ export async function getMonthlyProjection(
       where: { userId, accountId: { not: null }, transferId: null },
       _sum: { amount: true },
     }),
+    // 8. Rolling 30-day variable expenses — used as basis for "Estimado" card.
+    //    Variable = non-recurring, non-child, non-transfer, non-card-payment, non-skipped EXPENSE.
+    //    This gives a meaningful daily average from day 1 of the month instead of waiting
+    //    for current-month data to accumulate.
+    prisma.transaction.findMany({
+      where: {
+        userId,
+        type: 'EXPENSE',
+        isRecurring: false,
+        parentId: null,
+        transferId: null,
+        isCardPayment: { not: true },
+        isSkipped: { not: true },
+        date: { gte: thirtyDaysAgo, lte: today },
+      },
+      select: { amount: true },
+    }),
   ])
 
   // ── Classify realized expenses as fixed vs variable ────────────────────────
@@ -195,16 +227,23 @@ export async function getMonthlyProjection(
   }
 
   // ── Future recurring ───────────────────────────────────────────────────────
-  const futureRecurringIncome = futureRecurringTxs
+  const futureRecurringIncome = futureTxs
     .filter((t) => t.type === 'INCOME')
     .reduce((s, t) => s + Number(t.amount), 0)
 
-  const futureRecurringExpense = futureRecurringTxs
+  const futureRecurringExpense = futureTxs
     .filter((t) => t.type === 'EXPENSE')
     .reduce((s, t) => s + Number(t.amount), 0)
 
-  // ── Variable (informational only — not included in projectedExpense) ────────
-  const dailyVariableAvg = variableExpenseRealized / daysPassedSafe
+  // ── Variable daily average (rolling 30 days) ─────────────────────────────
+  // Uses the last 30 calendar days so the "Estimado" card is meaningful even on
+  // day 1 of the month when current-month data hasn't accumulated yet.
+  // Falls back to current-month-only average only when the rolling window is empty.
+  const rolling30Sum = rolling30Txs.reduce((s, t) => s + Number(t.amount), 0)
+  const rolling30DailyAvg = rolling30Sum / 30
+  const currentMonthDailyAvg = variableExpenseRealized / daysPassedSafe
+  const dailyVariableAvg = rolling30DailyAvg > 0 ? rolling30DailyAvg : currentMonthDailyAvg
+
   const projectedVariableFromRemaining = dailyVariableAvg * daysRemaining
 
   // ── Liability installments ────────────────────────────────────────────────
@@ -261,7 +300,7 @@ export async function getMonthlyProjection(
       expectedBalance: confirmedIncome - confirmedExpense,
       premises: [
         { label: 'Receitas realizadas no mês', included: true },
-        { label: 'Receitas recorrentes futuras', included: true },
+        { label: 'Receitas futuras previstas no mês', included: true },
         { label: 'Despesas fixas e recorrentes', included: true },
         { label: 'Parcelas de passivos', included: true },
         { label: 'Faturas de cartão', included: true },
@@ -277,7 +316,7 @@ export async function getMonthlyProjection(
       expectedBalance: confirmedIncome - (confirmedExpense + estimatedVariableExpense),
       premises: [
         { label: 'Receitas realizadas no mês', included: true },
-        { label: 'Receitas recorrentes futuras', included: true },
+        { label: 'Receitas futuras previstas no mês', included: true },
         { label: 'Despesas fixas e recorrentes', included: true },
         { label: 'Parcelas de passivos', included: true },
         { label: 'Faturas de cartão', included: true },
@@ -292,7 +331,7 @@ export async function getMonthlyProjection(
       projectedExpense: confirmedExpense + Math.round(1.3 * estimatedVariableExpense * 100) / 100,
       expectedBalance: realizedIncome - (confirmedExpense + Math.round(1.3 * estimatedVariableExpense * 100) / 100),
       premises: [
-        { label: 'Receitas recorrentes futuras excluídas', included: false },
+        { label: 'Receitas futuras previstas excluídas', included: false },
         { label: 'Somente receitas já realizadas', included: true },
         { label: 'Despesas fixas e recorrentes', included: true },
         { label: 'Parcelas de passivos', included: true },
@@ -316,7 +355,7 @@ export async function getMonthlyProjection(
   }
 
   const futureByAccount = new Map<string, { inflow: number; outflow: number }>()
-  for (const tx of futureRecurringTxs) {
+  for (const tx of futureTxs) {
     if (!tx.accountId) continue
     const entry = futureByAccount.get(tx.accountId) ?? { inflow: 0, outflow: 0 }
     if (tx.type === 'INCOME') entry.inflow += Number(tx.amount)
@@ -341,14 +380,14 @@ export async function getMonthlyProjection(
   // ── Breakdown details for info modals ─────────────────────────────────────
   const incomeBreakdown = {
     realizedItems: realizedIncomeItems,
-    recurringItems: futureRecurringTxs
+    recurringItems: futureTxs
       .filter((t) => t.type === 'INCOME')
       .map((t) => ({ label: t.description, amount: Number(t.amount) })),
   }
 
   const expenseBreakdown = {
     fixedRealizedItems,
-    recurringItems: futureRecurringTxs
+    recurringItems: futureTxs
       .filter((t) => t.type === 'EXPENSE')
       .map((t) => ({ label: t.description, amount: Number(t.amount) })),
     liabilityItems,

@@ -1,0 +1,162 @@
+##############################################################################
+# Dependabot — Automated Dependency Updates
+#
+# Strategy:
+#  • Patch + minor updates are grouped into a single weekly PR per ecosystem.
+#    This reduces PR noise while keeping the dependency graph fresh.
+#  • Major version bumps get individual PRs (they require manual review).
+#  • GitHub Actions dependencies are kept up to date automatically —
+#    important because outdated actions may have known CVEs or be abandoned.
+#  • Critical security packages (auth, crypto, DB) are reviewed individually
+#    and their updates are NOT grouped, to ensure careful review.
+#
+# After merging a Dependabot PR, run `node scripts/pin-actions.mjs` to
+# refresh the commit SHA pins in workflow files.
+##############################################################################
+
+version: 2
+
+updates:
+  # ── Backend (Node.js) ──────────────────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: "America/Sao_Paulo"
+    open-pull-requests-limit: 10
+    # Require review from the security team for dependency changes.
+    reviewers:
+      - joaovsantos   # replace with your GitHub username / team slug
+    labels:
+      - dependencies
+      - backend
+
+    # Group patch and minor updates together to reduce PR noise.
+    # Each group becomes a single PR; Dependabot still checks all constraints.
+    groups:
+      backend-patch-minor:
+        applies-to: version-updates
+        update-types:
+          - patch
+          - minor
+        # Exclude security-critical packages from grouping — they get their
+        # own individual PRs so changes can be reviewed carefully.
+        exclude-patterns:
+          - "jsonwebtoken"
+          - "bcryptjs"
+          - "otplib"
+          - "@prisma/*"
+          - "prisma"
+          - "stripe"
+          - "@aws-sdk/*"
+          - "helmet"
+          - "express-rate-limit"
+          - "zod"
+
+    # Ignore major updates for packages that require migration work.
+    # Remove entries as you complete those migrations.
+    ignore:
+      - dependency-name: "prisma"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@prisma/client"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "stripe"
+        update-types: ["version-update:semver-major"]
+
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(devDeps)"
+      include: scope
+
+  # ── Frontend (Node.js) ────────────────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: "America/Sao_Paulo"
+    open-pull-requests-limit: 10
+    reviewers:
+      - joaovsantos
+    labels:
+      - dependencies
+      - frontend
+
+    groups:
+      frontend-patch-minor:
+        applies-to: version-updates
+        update-types:
+          - patch
+          - minor
+        exclude-patterns:
+          - "react"
+          - "react-dom"
+          - "react-router-dom"
+          - "vite"
+          - "@vitejs/*"
+          - "typescript"
+
+    ignore:
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
+
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(devDeps)"
+      include: scope
+
+  # ── Root package.json ──────────────────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "08:00"
+      timezone: "America/Sao_Paulo"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - root
+
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope
+
+  # ── GitHub Actions ─────────────────────────────────────────────────────────
+  # Keeps action versions current — critical because outdated actions can have
+  # CVEs and because SHA-pinned actions need to be re-pinned after updates.
+  #
+  # After Dependabot opens an actions PR, it updates the tag reference.
+  # Run `node scripts/pin-actions.mjs` to convert the new tag to a SHA.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: tuesday    # separate day from npm updates to spread review load
+      time: "08:00"
+      timezone: "America/Sao_Paulo"
+    open-pull-requests-limit: 5
+    reviewers:
+      - joaovsantos
+    labels:
+      - dependencies
+      - github-actions
+      - security
+
+    groups:
+      actions-patch-minor:
+        applies-to: version-updates
+        update-types:
+          - patch
+          - minor
+
+    commit-message:
+      prefix: "chore(actions)"
+      include: scope

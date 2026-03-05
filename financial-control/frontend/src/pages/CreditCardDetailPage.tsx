@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ChevronLeft, CreditCard as CreditCardIcon, Loader2 } from 'lucide-react'
+import { ChevronLeft, CreditCard as CreditCardIcon, Loader2, Receipt } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { CardPaymentModal } from '@/components/creditCards/CardPaymentModal'
 import { StatementDetailPanel } from '@/components/creditCards/StatementDetailPanel'
@@ -153,7 +153,7 @@ export default function CreditCardDetailPage() {
                     )}
                     onClick={() => setSelectedStatement(isSelected ? null : stmt)}
                   >
-                    <div className="flex items-center gap-4 px-4 py-3.5">
+                    <div className="flex items-center gap-3 px-4 py-3.5">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">
                           <p className="text-sm font-semibold text-slate-900 capitalize">
@@ -167,6 +167,32 @@ export default function CreditCardDetailPage() {
                           Vence em {new Date(stmt.dueDate).toLocaleDateString('pt-BR')}
                         </p>
                       </div>
+
+                      {/* Pay button — only active within the payment window (CLOSED status) */}
+                      {openBalance > 0 && stmt.status !== 'PAID' && (() => {
+                        const isPayable = stmt.status === 'CLOSED'
+                        const tipText = stmt.status === 'OPEN'
+                          ? `Fatura fecha em ${new Date(stmt.closingDate).toLocaleDateString('pt-BR')}`
+                          : stmt.status === 'OVERDUE'
+                          ? 'Prazo de pagamento encerrado'
+                          : undefined
+                        return (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); if (isPayable) setPayingStatement(stmt) }}
+                            disabled={!isPayable}
+                            title={tipText}
+                            className={cn(
+                              'shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all',
+                              isPayable
+                                ? 'bg-primary text-white hover:opacity-90 active:scale-95'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed',
+                            )}
+                          >
+                            <Receipt className="w-3.5 h-3.5" />
+                            {stmt.status === 'OPEN' ? 'Aguardando fechamento' : stmt.status === 'OVERDUE' ? 'Vencida' : 'Pagar fatura'}
+                          </button>
+                        )
+                      })()}
 
                       <div className="text-right shrink-0">
                         <p className="text-base font-bold text-slate-900">{formatCurrency(stmt.totalSpent)}</p>

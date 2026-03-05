@@ -1,0 +1,219 @@
+##############################################################################
+# Security Scan
+#
+# Dedicated security workflow — separate from the main CI pipeline so it can
+# run on a schedule independently and be tuned without affecting build speed.
+#
+# Triggers:
+#  • Scheduled: daily at 02:00 UTC (catch newly-disclosed CVEs)
+#  • Push to main: immediate scan after every merge
+#  • Pull Requests: dependency-review on every PR (blocks risky upgrades)
+#
+# Jobs:
+#  1. dependency-review   — blocks PRs that introduce known-vulnerable deps
+#  2. deep-audit          — full npm audit with categorised report
+#  3. secret-scan         — gitleaks scans full git history for leaked secrets
+#  4. license-check       — rejects packages with disallowed licenses
+#
+# All actions are pinned to commit SHAs to prevent tag-hijacking attacks.
+##############################################################################
+
+name: Security Scan
+
+on:
+  schedule:
+    - cron: '0 2 * * *'   # daily at 02:00 UTC
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # ════════════════════════════════════════════════════════════════════════════
+  # JOB 1 — Dependency Review (PRs only)
+  # Compares the dependency diff introduced by the PR against the GitHub
+  # Advisory Database. Blocks merge if new vulnerable packages are added.
+  # ════════════════════════════════════════════════════════════════════════════
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: write   # post review comment on the PR
+    steps:
+      # Pin: actions/checkout v4.2.2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      # Pin: actions/dependency-review-action v4.4.0
+      # Docs: https://github.com/actions/dependency-review-action
+      - uses: actions/dependency-review-action@3b139cfc5fae8b618d3eae3675e383bb1769c019
+        with:
+          # Block merge if ANY high or critical vulnerability is introduced.
+          fail-on-severity: high
+          # Disallow packages with licenses incompatible with our SaaS model.
+          deny-licenses: >-
+            GPL-2.0,
+            GPL-3.0,
+            LGPL-2.0,
+            LGPL-2.1,
+            LGPL-3.0,
+            AGPL-1.0,
+            AGPL-3.0,
+            CPAL-1.0,
+            EUPL-1.1,
+            EUPL-1.2
+          comment-summary-in-pr: always
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # JOB 2 — Deep npm audit (all branches / scheduled)
+  # Full audit with structured JSON report — catches vulnerabilities in both
+  # direct and transitive dependencies.
+  # ════════════════════════════════════════════════════════════════════════════
+  deep-audit:
+    name: Deep Dependency Audit
+    runs-on: ubuntu-24.04
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install backend deps (frozen, no scripts)
+        run: npm ci --ignore-scripts
+        working-directory: backend
+
+      - name: Install frontend deps (frozen, no scripts)
+        run: npm ci --ignore-scripts
+        working-directory: frontend
+
+      - name: Full audit — backend
+        run: npm audit --json > /tmp/audit-backend.json || true
+        working-directory: backend
+
+      - name: Full audit — frontend
+        run: npm audit --json > /tmp/audit-frontend.json || true
+        working-directory: frontend
+
+      - name: Enforce thresholds & print report
+        run: |
+          node scripts/audit-check.mjs --report /tmp/audit-backend.json  --label backend  --level high
+          node scripts/audit-check.mjs --report /tmp/audit-frontend.json --label frontend --level high
+
+      # Verify cryptographic signatures of every installed package.
+      # Detects packages replaced by a compromised build in the npm registry.
+      - name: Verify registry signatures — backend
+        run: npm audit signatures
+        working-directory: backend
+
+      - name: Verify registry signatures — frontend
+        run: npm audit signatures
+        working-directory: frontend
+
+      # Pin: actions/upload-artifact v4.4.3
+      - uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882
+        if: always()
+        with:
+          name: audit-reports-${{ github.run_id }}
+          path: |
+            /tmp/audit-backend.json
+            /tmp/audit-frontend.json
+          retention-days: 30
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # JOB 3 — Secret scanning with Gitleaks
+  # Scans the full commit history for accidentally committed secrets:
+  # API keys, tokens, passwords, connection strings, private keys.
+  #
+  # Configuration: .gitleaks.toml (allowlists for known-safe patterns)
+  # ════════════════════════════════════════════════════════════════════════════
+  secret-scan:
+    name: Secret Scan (Gitleaks)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      # Required to post findings as PR annotations (optional).
+      security-events: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          # Fetch full history so gitleaks can scan all commits, not just HEAD.
+          fetch-depth: 0
+
+      # Pin: gitleaks/gitleaks-action v2.3.4
+      # Docs: https://github.com/gitleaks/gitleaks-action
+      - uses: gitleaks/gitleaks-action@44c470e4b6a46271571b4df2e7bc822e01dfbcb6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GITLEAKS_LICENSE is only needed for the paid "protect" feature.
+          # The free version covers repo scanning (what we use here).
+        with:
+          config-path: .gitleaks.toml
+
+  # ════════════════════════════════════════════════════════════════════════════
+  # JOB 4 — License compliance check
+  # Ensures no package with a copyleft or incompatible license was introduced.
+  # Runs a local check using `license-checker` (installed ephemerally).
+  # ════════════════════════════════════════════════════════════════════════════
+  license-check:
+    name: License Compliance
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+
+      - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install backend deps
+        run: npm ci --ignore-scripts
+        working-directory: backend
+
+      - name: Install frontend deps
+        run: npm ci --ignore-scripts
+        working-directory: frontend
+
+      # Install license-checker without touching project lockfiles.
+      - name: Install license-checker
+        run: npm install -g license-checker@25.0.1 --ignore-scripts
+
+      - name: Check backend licenses
+        run: |
+          license-checker \
+            --production \
+            --excludePrivatePackages \
+            --onlyAllow "MIT;Apache-2.0;ISC;BSD-2-Clause;BSD-3-Clause;0BSD;CC0-1.0;CC-BY-3.0;CC-BY-4.0;Python-2.0;BlueOak-1.0.0;Unlicense" \
+            --json \
+            > /tmp/licenses-backend.json
+        working-directory: backend
+
+      - name: Check frontend licenses
+        run: |
+          license-checker \
+            --production \
+            --excludePrivatePackages \
+            --onlyAllow "MIT;Apache-2.0;ISC;BSD-2-Clause;BSD-3-Clause;0BSD;CC0-1.0;CC-BY-3.0;CC-BY-4.0;Python-2.0;BlueOak-1.0.0;Unlicense" \
+            --json \
+            > /tmp/licenses-frontend.json
+        working-directory: frontend
+
+      - uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882
+        if: always()
+        with:
+          name: license-reports-${{ github.run_id }}
+          path: |
+            /tmp/licenses-backend.json
+            /tmp/licenses-frontend.json
+          retention-days: 30

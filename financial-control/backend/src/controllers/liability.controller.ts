@@ -2,6 +2,7 @@ import { Response } from 'express'
 import { z } from 'zod'
 import { AuthRequest } from '../middlewares/auth.middleware'
 import { prisma } from '../services/prisma'
+import { audit } from '../lib/audit'
 
 const liabilitySchema = z.object({
   name: z.string().min(1),
@@ -65,6 +66,7 @@ export async function deleteLiability(req: AuthRequest, res: Response) {
   if (!liability) return res.status(404).json({ error: 'Passivo não encontrado' })
 
   await prisma.liability.delete({ where: { id } })
+  audit('LIABILITY_DELETE', req.userId!, req, { liabilityId: id, name: liability.name })
   return res.status(204).send()
 }
 

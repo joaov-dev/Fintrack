@@ -5,12 +5,27 @@
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "build": "npm --prefix backend run build && npm --prefix frontend run build",
     "test": "npm --prefix backend test",
+    "test:unit": "npm --prefix backend run test:unit",
+    "test:integration": "npm --prefix backend run test:integration",
+    "test:all": "npm --prefix backend run test:all",
+    "test:coverage": "npm --prefix backend run test:coverage",
+    "generate-pdf": "node scripts/generate-pdf.mjs",
     "lint": "npm --prefix frontend run lint",
     "dev:backend": "npm --prefix backend run dev",
     "dev:frontend": "npm --prefix frontend run dev",
     "install:all": "npm --prefix backend install && npm --prefix frontend install",
     "db:migrate": "npm --prefix backend run db:migrate",
-    "db:studio": "npm --prefix backend run db:studio"
+    "db:studio": "npm --prefix backend run db:studio",
+    "audit": "npm --prefix backend audit && npm --prefix frontend audit",
+    "audit:check": "npm --prefix backend audit --json > /tmp/audit-backend.json; npm --prefix frontend audit --json > /tmp/audit-frontend.json; node scripts/audit-check.mjs --report /tmp/audit-backend.json --label backend --level high && node scripts/audit-check.mjs --report /tmp/audit-frontend.json --label frontend --level high",
+    "audit:fix": "npm --prefix backend audit fix && npm --prefix frontend audit fix",
+    "audit:signatures": "npm --prefix backend audit signatures && npm --prefix frontend audit signatures",
+    "sbom": "npm --prefix backend sbom --sbom-format cyclonedx --output-file sbom-backend.json && npm --prefix frontend sbom --sbom-format cyclonedx --output-file sbom-frontend.json",
+    "secret:scan": "gitleaks detect --config .gitleaks.toml --source . -v",
+    "secret:protect": "gitleaks protect --config .gitleaks.toml --staged -v",
+    "pin:actions": "node scripts/pin-actions.mjs",
+    "pin:actions:dry": "node scripts/pin-actions.mjs --dry-run",
+    "security:full": "npm run audit:check && npm run audit:signatures && npm run secret:scan"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

@@ -119,7 +119,7 @@ export function Sidebar({ open, onClose }: SidebarProps) {
       >
         {/* Logo */}
         <div className="flex items-center gap-3 px-6 h-16 border-b border-black/[0.07] dark:border-white/[0.07]">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shadow-sm dark:shadow-primary/20">
+          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shadow-sm dark:shadow-black/30">
             <TrendingUp className="w-4 h-4 text-white dark:text-primary-foreground" />
           </div>
           <span className="font-bold text-slate-900 dark:text-slate-100 text-lg">DominaHub</span>

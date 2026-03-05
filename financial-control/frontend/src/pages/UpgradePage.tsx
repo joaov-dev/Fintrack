@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { Check, Zap, Crown, Loader2 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -57,6 +57,9 @@ const PLAN_META: Record<string, {
   },
 }
 
+// ─── Plan rank (higher = more features) ───────────────────────────────────────
+const PLAN_RANK: Record<string, number> = { FREE: 0, PRO: 1, BUSINESS: 2 }
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 export default function UpgradePage() {
   const [params] = useSearchParams()
@@ -66,15 +69,23 @@ export default function UpgradePage() {
   const [pending, setPending] = useState<PlanCode | null>(null)
 
   const { plans, isLoading } = useBillingPlans()
-  const { data: entitlements } = useEntitlements()
+  const { data: entitlements, reload: reloadEntitlements } = useEntitlements()
   const { toast } = useToast()
+  const navigate = useNavigate()
 
   const paidPlans = plans.filter((p) => p.code !== 'FREE')
 
   async function handleCheckout(planCode: PlanCode) {
     try {
       setPending(planCode)
-      await startCheckout(planCode, cycle)
+      const result = await startCheckout(planCode, cycle)
+      if (result?.upgraded) {
+        await reloadEntitlements()
+        toast({ title: 'Plano atualizado com sucesso!', description: 'Seu plano foi atualizado imediatamente.' })
+        navigate('/billing')
+        return
+      }
+      // If result.url was set, startCheckout already redirected the browser
     } catch (err) {
       toast({ title: getApiErrorMessage(err, 'Erro ao iniciar checkout'), variant: 'destructive' })
       setPending(null)
@@ -146,19 +157,24 @@ export default function UpgradePage() {
 
             const price = plan.prices.find((p) => p.billingCycle === cycle)
             const Icon = meta.icon
+            const currentRank = PLAN_RANK[entitlements?.plan ?? 'FREE']
+            const planRank = PLAN_RANK[plan.code] ?? 0
             const isCurrent = entitlements?.plan === plan.code
+            const isAlreadyCovered = !isCurrent && currentRank > planRank
             const isPending = pending === plan.code
+            const isDisabled = !price || isPending || isCurrent || isAlreadyCovered
 
             return (
               <Card
                 key={plan.id}
                 className={cn(
                   'relative overflow-hidden border-slate-200',
-                  meta.highlighted && 'border-primary/40 ring-1 ring-primary/20',
+                  meta.highlighted && !isAlreadyCovered && 'border-primary/40 ring-1 ring-primary/20',
+                  isAlreadyCovered && 'opacity-60',
                 )}
               >
                 {/* Accent bar */}
-                {meta.highlighted && (
+                {meta.highlighted && !isAlreadyCovered && (
                   <div className="absolute top-0 inset-x-0 h-0.5 bg-primary" />
                 )}
 
@@ -179,6 +195,11 @@ export default function UpgradePage() {
                     {isCurrent && (
                       <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 whitespace-nowrap shrink-0">
                         Plano atual
+                      </span>
+                    )}
+                    {isAlreadyCovered && (
+                      <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400 whitespace-nowrap shrink-0">
+                        Incluído no seu plano
                       </span>
                     )}
                   </div>
@@ -202,17 +223,19 @@ export default function UpgradePage() {
                   {/* CTA */}
                   <Button
                     className="w-full"
-                    variant={meta.highlighted ? 'default' : 'outline'}
-                    disabled={!price || isPending || isCurrent}
+                    variant={meta.highlighted && !isAlreadyCovered ? 'default' : 'outline'}
+                    disabled={isDisabled}
                     onClick={() => handleCheckout(plan.code as PlanCode)}
                   >
                     {isPending ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        Redirecionando...
+                        Aguarde...
                       </>
                     ) : isCurrent ? (
                       'Plano ativo'
+                    ) : isAlreadyCovered ? (
+                      'Já incluído no seu plano'
                     ) : (
                       `Assinar ${plan.name}`
                     )}

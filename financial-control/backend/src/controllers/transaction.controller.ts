@@ -7,6 +7,10 @@ import { getOrCreateStatement, recalculateStatement } from '../services/cardStat
 import { getInstallmentDate } from '../services/billingCycleUtils'
 import { suggestFromRules } from '../services/categorizationRules.service'
 import { checkFeatureAccess, checkUsageLimit } from '../services/billing.service'
+import { generateRecurringForMonth } from '../services/recurringService'
+import { audit } from '../lib/audit'
+import { parsePagination } from '../lib/pagination'
+import { encrypt, decrypt } from '../lib/encryption'
 
 // ── Shared include for all transaction responses ───────────────────────────────
 
@@ -75,98 +79,6 @@ async function upsertTags(tagNames: string[], userId: string) {
   return results.map((t) => ({ id: t.id }))
 }
 
-// ── Recurring generation ───────────────────────────────────────────────────────
-
-/** Returns the first Monday-Friday day from `d` onwards */
-function nextBusinessDay(d: Date): Date {
-  const result = new Date(d)
-  while (result.getDay() === 0 || result.getDay() === 6) {
-    result.setDate(result.getDate() + 1)
-  }
-  return result
-}
-
-async function generateRecurringForMonth(userId: string, month: number, year: number) {
-  const start = new Date(year, month - 1, 1)
-  const end   = new Date(year, month, 0, 23, 59, 59, 999)
-
-  const templates = await prisma.transaction.findMany({
-    where: {
-      userId,
-      isRecurring: true,
-      isPaused: false,           // skip paused series
-      date: { lt: start },
-      OR: [{ recurrenceEnd: null }, { recurrenceEnd: { gte: start } }],
-    },
-  })
-
-  for (const tpl of templates) {
-    if (!tpl.recurrenceType) continue
-
-    // ── WEEKLY: one instance per matching weekday ─────────────────────────────
-    if (tpl.recurrenceType === 'WEEKLY') {
-      const targetDay = new Date(tpl.date).getDay()
-      const d = new Date(year, month - 1, 1)
-      while (d <= end) {
-        if (d.getDay() === targetDay) {
-          const dayStart = new Date(d)
-          const dayEnd   = new Date(d.getTime() + 86399999)
-          const exists = await prisma.transaction.findFirst({
-            where: { parentId: tpl.id, date: { gte: dayStart, lte: dayEnd } },
-          })
-          if (!exists) {
-            await prisma.transaction.create({
-              data: {
-                userId: tpl.userId, categoryId: tpl.categoryId, accountId: tpl.accountId,
-                type: tpl.type, amount: tpl.amount, description: tpl.description,
-                notes: tpl.notes, date: new Date(d), isRecurring: false, parentId: tpl.id,
-              },
-            })
-          }
-        }
-        d.setDate(d.getDate() + 1)
-      }
-      continue
-    }
-
-    // ── Monthly, Yearly, Last Day, Business Days: one instance per month ──────
-    const tplDate = new Date(tpl.date)
-    let instanceDate: Date | null = null
-
-    if (tpl.recurrenceType === 'MONTHLY') {
-      // Same day of month as template (clamped to last day if needed)
-      const day = Math.min(tplDate.getDate(), new Date(year, month, 0).getDate())
-      instanceDate = new Date(year, month - 1, day, 12)
-    } else if (tpl.recurrenceType === 'YEARLY') {
-      if (tplDate.getMonth() !== month - 1) continue
-      instanceDate = new Date(year, month - 1, tplDate.getDate(), 12)
-    } else if (tpl.recurrenceType === 'LAST_DAY') {
-      // Last calendar day of the month
-      const lastDay = new Date(year, month, 0).getDate()
-      instanceDate = new Date(year, month - 1, lastDay, 12)
-    } else if (tpl.recurrenceType === 'BUSINESS_DAYS') {
-      // First business day (Mon–Fri) of the month
-      instanceDate = nextBusinessDay(new Date(year, month - 1, 1, 12))
-    }
-
-    if (!instanceDate) continue
-
-    // Only create if no instance already exists for this month (including skipped)
-    const exists = await prisma.transaction.findFirst({
-      where: { parentId: tpl.id, date: { gte: start, lte: end } },
-    })
-    if (exists) continue
-
-    await prisma.transaction.create({
-      data: {
-        userId: tpl.userId, categoryId: tpl.categoryId, accountId: tpl.accountId,
-        type: tpl.type, amount: tpl.amount, description: tpl.description,
-        notes: tpl.notes, date: instanceDate, isRecurring: false, parentId: tpl.id,
-      },
-    })
-  }
-}
-
 // ── List ───────────────────────────────────────────────────────────────────────
 
 export async function listTransactions(req: AuthRequest, res: Response) {
@@ -176,7 +88,7 @@ export async function listTransactions(req: AuthRequest, res: Response) {
   } = req.query
 
   if (month && year && !isRecurring) {
-    await generateRecurringForMonth(req.userId!, Number(month), Number(year))
+    await generateRecurringForMonth(req.userId!, Number(month), Number(year), prisma)
   }
 
   const where: Record<string, unknown> = { userId: req.userId }
@@ -210,13 +122,23 @@ export async function listTransactions(req: AuthRequest, res: Response) {
     ]
   }
 
-  const transactions = await prisma.transaction.findMany({
-    where,
-    include: TX_INCLUDE,
-    orderBy: { date: 'desc' },
-  })
+  const { skip, take, page } = parsePagination(req.query as Record<string, unknown>)
 
-  return res.json(transactions)
+  const [transactions, total] = await Promise.all([
+    prisma.transaction.findMany({
+      where,
+      include: TX_INCLUDE,
+      orderBy: { date: 'desc' },
+      skip,
+      take,
+    }),
+    prisma.transaction.count({ where }),
+  ])
+
+  return res.json({
+    data: transactions,
+    meta: { page, limit: take, total, hasMore: skip + transactions.length < total },
+  })
 }
 
 // ── Create ─────────────────────────────────────────────────────────────────────
@@ -516,6 +438,11 @@ export async function deleteTransaction(req: AuthRequest, res: Response) {
   }
 
   await prisma.transaction.delete({ where: { id } })
+  audit('TRANSACTION_DELETE', req.userId!, req, {
+    transactionId: id,
+    description: transaction.description,
+    amount: Number(transaction.amount),
+  })
 
   if (transaction.statementId) {
     await recalculateStatement(transaction.statementId, prisma)
@@ -548,7 +475,7 @@ export async function addAttachment(req: AuthRequest, res: Response) {
   const size = Math.round(base64Data.length * 0.75)
 
   const attachment = await prisma.transactionAttachment.create({
-    data: { transactionId: id, userId: req.userId!, filename, mimeType, size, dataUrl },
+    data: { transactionId: id, userId: req.userId!, filename, mimeType, size, dataUrl: encrypt(dataUrl) },
     select: { id: true, filename: true, mimeType: true, size: true, createdAt: true },
   })
   return res.status(201).json(attachment)
@@ -562,7 +489,7 @@ export async function getAttachment(req: AuthRequest, res: Response) {
   })
   if (!attachment) return res.status(404).json({ error: 'Anexo não encontrado' })
 
-  return res.json(attachment)
+  return res.json({ ...attachment, dataUrl: decrypt(attachment.dataUrl) })
 }
 
 export async function deleteAttachment(req: AuthRequest, res: Response) {
@@ -574,6 +501,7 @@ export async function deleteAttachment(req: AuthRequest, res: Response) {
   if (!attachment) return res.status(404).json({ error: 'Anexo não encontrado' })
 
   await prisma.transactionAttachment.delete({ where: { id: aid } })
+  audit('ATTACHMENT_DELETE', req.userId!, req, { attachmentId: aid, transactionId: id, filename: attachment.filename })
   return res.status(204).send()
 }
 

@@ -9,19 +9,15 @@ export function AppLayout() {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* ── Ambient glass orbs — provide depth for backdrop-filter to blur ── */}
-      <div className="fixed inset-0 pointer-events-none z-[1]">
+      {/* ── Ambient glass orbs — very subtle depth for backdrop-filter ── */}
+      <div className="fixed inset-0 pointer-events-none z-[1] dark:block hidden">
         <div
-          className="absolute -top-40 -right-20 w-[680px] h-[680px] rounded-full blur-[110px]"
-          style={{ background: 'hsl(var(--primary) / 0.07)' }}
+          className="absolute -top-40 -right-20 w-[680px] h-[680px] rounded-full blur-[140px]"
+          style={{ background: 'hsl(var(--primary) / 0.025)' }}
         />
         <div
-          className="absolute -bottom-40 -left-20 w-[580px] h-[580px] rounded-full blur-[100px]"
-          style={{ background: 'hsl(var(--warning) / 0.06)' }}
-        />
-        <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[420px] h-[420px] rounded-full blur-[90px]"
-          style={{ background: 'hsl(var(--primary) / 0.03)' }}
+          className="absolute -bottom-40 -left-20 w-[580px] h-[580px] rounded-full blur-[130px]"
+          style={{ background: 'hsl(var(--warning) / 0.02)' }}
         />
       </div>
 
