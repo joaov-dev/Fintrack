@@ -8,13 +8,17 @@ datasource db {
 }
 
 model User {
-  id           String   @id @default(cuid())
+  id           String     @id @default(cuid())
   name         String
-  email        String   @unique
+  email        String     @unique
   passwordHash String
   avatar       String?
   mfaSecret    String?
-  mfaEnabled   Boolean  @default(false)
+  mfaEnabled   Boolean    @default(false)
+
+  // ── Admin controls ───────────────────────────────────────────────────────────
+  status      UserStatus @default(ACTIVE)   // SUSPENDED blocks login
+  lastLoginAt DateTime?                     // updated on each successful login
 
   // ── Preferências financeiras ─────────────────────────────────────────────────
   currency     String   @default("BRL")
@@ -68,6 +72,8 @@ model User {
   subscriptionEvents     SubscriptionEvent[]
   billingProfile         BillingCustomer?       @relation("UserBillingProfile")
   consentRecords         ConsentRecord[]
+  checkoutAttempts       CheckoutAttempt[]
+  promotions             UserPromotion[]
 
   @@map("users")
 }
@@ -393,6 +399,39 @@ model SubscriptionEvent {
   @@unique([source, externalEventId])
   @@index([userId, eventType])
   @@map("subscription_events")
+}
+
+model CheckoutAttempt {
+  id              String       @id @default(cuid())
+  userId          String
+  planCode        PlanCode
+  billingCycle    BillingCycle
+  stripeSessionId String       @unique
+  completedAt     DateTime?
+  createdAt       DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, completedAt])
+  @@index([createdAt, completedAt])
+  @@map("checkout_attempts")
+}
+
+model UserPromotion {
+  id             String    @id @default(cuid())
+  userId         String
+  stripeCouponId String
+  discountPct    Int       @default(10)
+  expiresAt      DateTime
+  shownAt        DateTime?
+  redeemedAt     DateTime?
+  sentByAdminId  String
+  createdAt      DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, redeemedAt, expiresAt])
+  @@map("user_promotions")
 }
 
 model FeatureGate {
@@ -887,4 +926,65 @@ model CategorizationRule {
   account  Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
 
   @@map("categorization_rules")
+}
+
+// ── Admin Panel ───────────────────────────────────────────────────────────────
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN_READONLY
+}
+
+model AdminAccount {
+  id           String          @id @default(cuid())
+  username     String          @unique
+  passwordHash String
+  role         AdminRole       @default(SUPER_ADMIN)
+  isActive     Boolean         @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  sessions  AdminSession[]
+  auditLogs AdminAuditLog[]
+
+  @@map("admin_accounts")
+}
+
+model AdminSession {
+  id         String       @id @default(cuid())
+  adminId    String
+  tokenHash  String       @unique
+  ipAddress  String?
+  userAgent  String?
+  expiresAt  DateTime
+  createdAt  DateTime     @default(now())
+  lastUsedAt DateTime     @default(now())
+
+  admin AdminAccount @relation(fields: [adminId], references: [id], onDelete: Cascade)
+
+  @@index([adminId])
+  @@map("admin_sessions")
+}
+
+model AdminAuditLog {
+  id         String   @id @default(cuid())
+  adminId    String
+  action     String
+  targetType String?
+  targetId   String?
+  details    Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  admin AdminAccount @relation(fields: [adminId], references: [id])
+
+  @@index([adminId, createdAt])
+  @@index([targetType, targetId])
+  @@map("admin_audit_logs")
 }

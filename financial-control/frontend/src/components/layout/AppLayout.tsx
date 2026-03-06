@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom'
 import { Menu } from 'lucide-react'
 import { Sidebar } from './Sidebar'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
+import { PromoModal } from '@/components/PromoModal'
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -43,6 +44,8 @@ export function AppLayout() {
           <Outlet />
         </main>
       </div>
+
+      <PromoModal />
     </div>
   )
 }

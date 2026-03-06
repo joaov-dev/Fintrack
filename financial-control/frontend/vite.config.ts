@@ -52,6 +52,18 @@ export default defineConfig({
         target: 'http://localhost:3333',
         changeOrigin: true,
       },
+      '/admin': {
+        target: 'http://localhost:3333',
+        changeOrigin: true,
+        // Only proxy XHR/fetch API calls, not browser page navigations.
+        // When Accept contains text/html (browser navigation), bypass to Vite
+        // so React Router serves the admin SPA.
+        bypass: (req) => {
+          if (req.headers.accept?.includes('text/html')) {
+            return '/index.html'
+          }
+        },
+      },
     },
     headers: {
       ...baseHeaders,

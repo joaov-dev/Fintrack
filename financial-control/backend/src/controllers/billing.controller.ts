@@ -153,6 +153,13 @@ export async function createCheckoutSession(req: AuthRequest, res: Response) {
   const billingCustomer = await getOrCreateBillingCustomer(userId)
   const stripe = getStripeClient()
 
+  // Apply recovery coupon if user has an active promotion
+  const activePromo = await prisma.userPromotion.findFirst({
+    where: { userId, expiresAt: { gt: new Date() }, redeemedAt: null },
+    orderBy: { createdAt: 'desc' },
+  })
+  const discounts = activePromo ? [{ coupon: activePromo.stripeCouponId }] : undefined
+
   const isProMonthly = price.plan.code === 'PRO' && price.billingCycle === 'MONTHLY'
   const session = await stripe.checkout.sessions.create({
     mode: 'subscription',
@@ -167,14 +174,25 @@ export async function createCheckoutSession(req: AuthRequest, res: Response) {
         planCode: price.plan.code,
         priceId: price.id,
       },
-      trial_period_days: isProMonthly ? 7 : undefined,
+      trial_period_days: isProMonthly && !discounts ? 7 : undefined,
     },
     metadata: {
       userId,
       planCode: price.plan.code,
       priceId: price.id,
     },
+    discounts,
   })
+
+  // Track this checkout attempt for abandonment detection
+  prisma.checkoutAttempt.create({
+    data: {
+      userId,
+      planCode: price.plan.code as PlanCode,
+      billingCycle: price.billingCycle as BillingCycle,
+      stripeSessionId: session.id,
+    },
+  }).catch(console.error)
 
   return res.status(201).json({ url: session.url, id: session.id })
 }
@@ -358,6 +376,29 @@ export async function stripeWebhook(req: Request, res: Response) {
       await persistFromStripeSubscription(subscription)
       const dbSub = await prisma.subscription.findFirst({ where: { stripeSubscriptionId: subId } })
       subscriptionId = dbSub?.id ?? null
+    }
+
+    // Mark the checkout attempt as completed
+    if (session.id) {
+      prisma.checkoutAttempt.updateMany({
+        where: { stripeSessionId: session.id },
+        data: { completedAt: new Date() },
+      }).catch(() => undefined)
+    }
+
+    // Mark recovery coupon as redeemed if one was applied
+    const sessionAny = session as any
+    if (userId && sessionAny.discounts && sessionAny.discounts.length > 0) {
+      const couponRef = sessionAny.discounts[0]?.coupon
+      const usedCouponId: string | null = typeof couponRef === 'string'
+        ? couponRef
+        : (couponRef as any)?.id ?? null
+      if (usedCouponId) {
+        prisma.userPromotion.updateMany({
+          where: { userId, stripeCouponId: usedCouponId, redeemedAt: null },
+          data: { redeemedAt: new Date() },
+        }).catch(() => undefined)
+      }
     }
   }
 

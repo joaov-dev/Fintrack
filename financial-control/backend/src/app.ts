@@ -25,6 +25,7 @@ import { allocationTargetRoutes } from './routes/allocation-target.routes'
 import { billingRoutes } from './routes/billing.routes'
 import { healthRoutes } from './routes/health.routes'
 import { privacyRoutes } from './routes/privacy.routes'
+import { adminRoutes } from './routes/admin.routes'
 import { stripeWebhook } from './controllers/billing.controller'
 import { errorHandler } from './middlewares/error.middleware'
 import { apiLimiter, authLimiter, userLimiter, heavyLimiter } from './middlewares/rateLimiter'
@@ -89,6 +90,11 @@ app.use('/api/v1/auth/register', authLimiter)
 // Layer 4: heavy endpoints — analytics & import are DB-intensive
 app.use('/api/v1/analytics', heavyLimiter)
 app.use('/api/v1/import',    heavyLimiter)
+
+// ── Admin panel — isolated router, own rate limiting, cookie-based auth ───────
+// Mounted BEFORE /api so apiLimiter does not apply to /admin/* routes.
+// Admin routes apply their own adminLoginLimiter + adminApiLimiter internally.
+app.use('/admin', adminRoutes)
 
 // ── Health check (no version — used by monitoring/infra tools) ───────────────
 app.use('/api/health', healthRoutes)

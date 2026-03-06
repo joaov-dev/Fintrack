@@ -9,6 +9,7 @@ import {
   resumeSubscription,
   getEntitlements,
 } from '../controllers/billing.controller'
+import { getActivePromotion, markPromotionSeen } from '../controllers/billing.promotion.controller'
 
 export const billingRoutes = Router()
 
@@ -21,3 +22,5 @@ billingRoutes.post('/checkout-session', createCheckoutSession)
 billingRoutes.post('/portal-session', createPortalSession)
 billingRoutes.post('/cancel', cancelSubscription)
 billingRoutes.post('/resume', resumeSubscription)
+billingRoutes.get('/promotion', getActivePromotion)
+billingRoutes.post('/promotion/seen', markPromotionSeen)

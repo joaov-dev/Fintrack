@@ -383,10 +383,20 @@ export async function login(req: Request, res: Response) {
     return res.status(401).json({ error: 'Credenciais inválidas' })
   }
 
+  // 3. Suspended account check — same generic message to avoid info leak
+  if (user.status === 'SUSPENDED') {
+    logAuthEvent('LOGIN_FAIL', req, { userId: user.id, email, metadata: { reason: 'suspended' } })
+    return res.status(401).json({ error: 'Credenciais inválidas' })
+  }
+
   await recordLoginAttempt(email, ip, true)
+
+  // Update lastLoginAt (fire-and-forget — never block the login on a logging failure)
+  prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } }).catch(console.error)
+
   logAuthEvent('LOGIN_OK', req, { userId: user.id, email })
 
-  // 3. MFA gate — create short-lived intermediate token instead of a full session
+  // 4. MFA gate — create short-lived intermediate token instead of a full session
   if (user.mfaEnabled) {
     const mfaToken = signMfaToken(user.id)
     return res.json({ requiresMfa: true, mfaToken })

@@ -54,3 +54,21 @@ export const heavyLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 })
+
+/** Strict IP-based limiter for admin login — 5 attempts per 15 min per IP. */
+export const adminLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { error: 'Muitas tentativas de login admin. Tente novamente em 15 minutos.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+
+/** General limiter for authenticated admin API endpoints — 200 req / 15 min per IP. */
+export const adminApiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  message: { error: 'Limite de requisições admin excedido.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+})

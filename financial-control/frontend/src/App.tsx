@@ -28,6 +28,7 @@ import UpgradePage from '@/pages/UpgradePage'
 import CheckoutSuccessPage from '@/pages/CheckoutSuccessPage'
 import CheckoutCanceledPage from '@/pages/CheckoutCanceledPage'
 import { FeatureRoute } from '@/components/billing/FeatureRoute'
+import AdminApp from '@/admin/AdminApp'
 
 /** Shows LandingPage to visitors; redirects authenticated users to dashboard. */
 function RootRoute() {
@@ -105,6 +106,9 @@ export default function App() {
           <Route path="/billing" element={<BillingPage />} />
           <Route path="/investments" element={<FeatureRoute feature="INVESTMENTS_ADVANCED"><InvestmentsPage /></FeatureRoute>} />
         </Route>
+
+        {/* Admin panel — isolated, no link from main Sidebar */}
+        <Route path="/admin/*" element={<AdminApp />} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
